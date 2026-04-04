@@ -4,12 +4,15 @@ import { useState } from "react";
 import Link from "next/link";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebase/client";
+import { useFlowAuth } from "@/context/flowpm-auth-context";
+import { FirebaseEnvMissingMessage } from "@/components/flowpm/firebase-env-missing-message";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export default function ForgotPasswordPage() {
+  const { configMissing } = useFlowAuth();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -32,6 +35,10 @@ export default function ForgotPasswordPage() {
     } finally {
       setPending(false);
     }
+  }
+
+  if (configMissing) {
+    return <FirebaseEnvMissingMessage />;
   }
 
   return (

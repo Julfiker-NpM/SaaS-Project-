@@ -13,6 +13,13 @@ function readConfig() {
   };
 }
 
+/** True when required web config is present (safe to call from client; does not initialize Firebase). */
+export function isFirebaseConfigured(): boolean {
+  if (typeof window === "undefined") return false;
+  const c = readConfig();
+  return Boolean(c.apiKey?.trim() && c.projectId?.trim());
+}
+
 let app: FirebaseApp | undefined;
 
 export function getFirebaseApp(): FirebaseApp {

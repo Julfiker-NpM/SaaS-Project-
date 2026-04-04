@@ -7,16 +7,28 @@ import { getFirebaseAuth } from "@/lib/firebase/client";
 import { useFlowAuth } from "@/context/flowpm-auth-context";
 import { AppSidebar } from "@/components/flowpm/app-sidebar";
 import { TopBar } from "@/components/flowpm/top-bar";
+import { FirebaseEnvMissingMessage } from "@/components/flowpm/firebase-env-missing-message";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { firebaseUser, profile, org, orgId, loading } = useFlowAuth();
+  const { firebaseUser, profile, org, orgId, loading, configMissing } = useFlowAuth();
 
   useEffect(() => {
+    if (configMissing) return;
     if (!loading && !firebaseUser) {
       router.replace("/login");
     }
-  }, [loading, firebaseUser, router]);
+  }, [loading, firebaseUser, router, configMissing]);
+
+  if (configMissing) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-flowpm-canvas px-4 py-12">
+        <div className="w-full max-w-lg">
+          <FirebaseEnvMissingMessage />
+        </div>
+      </div>
+    );
+  }
 
   if (loading || !firebaseUser) {
     return (

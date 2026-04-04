@@ -11,7 +11,7 @@ import {
 } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { getFirebaseAuth, getFirebaseDb } from "@/lib/firebase/client";
+import { getFirebaseAuth, getFirebaseDb, isFirebaseConfigured } from "@/lib/firebase/client";
 
 export type UserProfile = {
   email: string;
@@ -31,6 +31,8 @@ type FlowAuthState = {
   org: OrgSummary | null;
   orgId: string | null;
   loading: boolean;
+  /** Set when NEXT_PUBLIC_FIREBASE_* are missing (e.g. Vercel env not added / redeploy needed). */
+  configMissing: boolean;
   refreshProfile: () => Promise<void>;
 };
 
@@ -75,8 +77,10 @@ export function FlowAuthProvider({ children }: { children: ReactNode }) {
   const [org, setOrg] = useState<OrgSummary | null>(null);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [configMissing, setConfigMissing] = useState(false);
 
   const refreshProfile = useCallback(async () => {
+    if (!isFirebaseConfigured()) return;
     const u = getFirebaseAuth().currentUser;
     if (!u) {
       setProfile(null);
@@ -91,6 +95,11 @@ export function FlowAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!isFirebaseConfigured()) {
+      setConfigMissing(true);
+      setLoading(false);
+      return;
+    }
     const auth = getFirebaseAuth();
     return onAuthStateChanged(auth, async (user) => {
       setFirebaseUser(user);
@@ -119,9 +128,10 @@ export function FlowAuthProvider({ children }: { children: ReactNode }) {
       org,
       orgId,
       loading,
+      configMissing,
       refreshProfile,
     }),
-    [firebaseUser, profile, org, orgId, loading, refreshProfile],
+    [firebaseUser, profile, org, orgId, loading, configMissing, refreshProfile],
   );
 
   return <FlowAuthContext.Provider value={value}>{children}</FlowAuthContext.Provider>;
