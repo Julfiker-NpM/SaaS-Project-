@@ -1,8 +1,8 @@
 import {
   collection,
   doc,
+  runTransaction,
   serverTimestamp,
-  writeBatch,
 } from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase/client";
 import { slugify } from "@/lib/slug";
@@ -15,31 +15,31 @@ export async function createWorkspaceForNewUser(input: {
 }): Promise<string> {
   const db = getFirebaseDb();
   const orgRef = doc(collection(db, "organizations"));
+  const userRef = doc(db, "users", input.uid);
+  const memberRef = doc(db, "organizations", orgRef.id, "members", input.uid);
   const slug = `${slugify(input.orgName)}-${Math.random().toString(36).slice(2, 8)}`;
-  const batch = writeBatch(db);
 
-  batch.set(doc(db, "users", input.uid), {
-    email: input.email,
-    name: input.displayName,
-    currentOrgId: orgRef.id,
-    createdAt: serverTimestamp(),
+  await runTransaction(db, async (transaction) => {
+    transaction.set(orgRef, {
+      name: input.orgName,
+      slug,
+      ownerId: input.uid,
+      plan: "free",
+      createdAt: serverTimestamp(),
+    });
+    transaction.set(userRef, {
+      email: input.email,
+      name: input.displayName,
+      currentOrgId: orgRef.id,
+      createdAt: serverTimestamp(),
+    });
+    transaction.set(memberRef, {
+      role: "owner",
+      email: input.email,
+      name: input.displayName,
+      joinedAt: serverTimestamp(),
+    });
   });
 
-  batch.set(orgRef, {
-    name: input.orgName,
-    slug,
-    ownerId: input.uid,
-    plan: "free",
-    createdAt: serverTimestamp(),
-  });
-
-  batch.set(doc(db, "organizations", orgRef.id, "members", input.uid), {
-    role: "owner",
-    email: input.email,
-    name: input.displayName,
-    joinedAt: serverTimestamp(),
-  });
-
-  await batch.commit();
   return orgRef.id;
 }

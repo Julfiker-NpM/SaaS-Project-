@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FirebaseError } from "firebase/app";
 import {
   createUserWithEmailAndPassword,
   deleteUser,
@@ -16,8 +15,26 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+/** Firestore/Auth errors are plain objects at runtime; `instanceof FirebaseError` often fails after Next bundles. */
+function getFirebaseErrCode(err: unknown): string {
+  if (typeof err === "object" && err !== null && "code" in err) {
+    const c = (err as { code: unknown }).code;
+    if (typeof c === "string") return c;
+  }
+  return "";
+}
+
+function getFirebaseErrDetail(err: unknown): string {
+  if (typeof err === "object" && err !== null && "message" in err) {
+    const m = (err as { message: unknown }).message;
+    if (typeof m === "string" && m.trim()) return m.trim();
+  }
+  if (err instanceof Error && err.message.trim()) return err.message.trim();
+  return "";
+}
+
 function firebaseErrorMessage(err: unknown): string {
-  const code = err instanceof FirebaseError ? err.code : "";
+  const code = getFirebaseErrCode(err);
   if (code === "auth/email-already-in-use") {
     return "An account with this email already exists.";
   }
@@ -38,6 +55,10 @@ function firebaseErrorMessage(err: unknown): string {
   }
   if (code === "auth/too-many-requests") {
     return "Too many attempts. Wait a few minutes and try again.";
+  }
+  const detail = getFirebaseErrDetail(err);
+  if (detail) {
+    return detail.length > 220 ? `${detail.slice(0, 217)}…` : detail;
   }
   return "Could not create account. Try again.";
 }
@@ -71,6 +92,7 @@ export function SignupForm() {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       try {
         await updateProfile(cred.user, { displayName: name });
+        await cred.user.getIdToken(true);
         await createWorkspaceForNewUser({
           uid: cred.user.uid,
           email,
