@@ -1,0 +1,98 @@
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* FlowPM design system — FlowPM_Build_Guide */
+@layer base {
+  .theme {
+    --font-heading: var(--font-plus-jakarta);
+    --font-sans: var(--font-inter);
+  }
+  :root {
+    --background: #f4f4f8;
+    --foreground: #2c2c3e;
+    --card: #ffffff;
+    --card-foreground: #2c2c3e;
+    --popover: #ffffff;
+    --popover-foreground: #2c2c3e;
+    --primary: #534ab7;
+    --primary-foreground: #ffffff;
+    --secondary: #eeedfe;
+    --secondary-foreground: #534ab7;
+    --muted: #f4f4f8;
+    --muted-foreground: #6b6b80;
+    --accent: #eeedfe;
+    --accent-foreground: #534ab7;
+    --destructive: #a32d2d;
+    --destructive-foreground: #ffffff;
+    --border: #e0e0ee;
+    --input: #e0e0ee;
+    --ring: rgba(83, 74, 183, 0.25);
+    --chart-1: #534ab7;
+    --chart-2: #7f77dd;
+    --chart-3: #0f6e56;
+    --chart-4: #ba7517;
+    --chart-5: #a32d2d;
+    --radius: 0.75rem;
+    --sidebar: #ffffff;
+    --sidebar-foreground: #2c2c3e;
+    --sidebar-primary: #534ab7;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #eeedfe;
+    --sidebar-accent-foreground: #534ab7;
+    --sidebar-border: #e0e0ee;
+    --sidebar-ring: rgba(83, 74, 183, 0.25);
+  }
+  .dark {
+    --background: #1a1a2e;
+    --foreground: #f4f4f8;
+    --card: #252538;
+    --card-foreground: #f4f4f8;
+    --popover: #252538;
+    --popover-foreground: #f4f4f8;
+    --primary: #7f77dd;
+    --primary-foreground: #1a1a2e;
+    --secondary: #2c2c3e;
+    --secondary-foreground: #f4f4f8;
+    --muted: #2c2c3e;
+    --muted-foreground: #9ca3af;
+    --accent: #2c2c3e;
+    --accent-foreground: #f4f4f8;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --border: rgba(224, 224, 238, 0.12);
+    --input: rgba(224, 224, 238, 0.15);
+    --ring: #7f77dd;
+    --sidebar: #1a1a2e;
+    --sidebar-foreground: #f4f4f8;
+    --sidebar-primary: #7f77dd;
+    --sidebar-primary-foreground: #1a1a2e;
+    --sidebar-accent: #2c2c3e;
+    --sidebar-accent-foreground: #f4f4f8;
+    --sidebar-border: rgba(224, 224, 238, 0.1);
+    --sidebar-ring: #7f77dd;
+  }
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-heading text-flowpm-dark;
+  }
+}
