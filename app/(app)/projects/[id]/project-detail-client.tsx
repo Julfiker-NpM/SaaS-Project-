@@ -146,33 +146,41 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
   useEffect(() => {
     setLoading(true);
     const pref = doc(db, "organizations", orgId, "projects", projectId);
-    const unsubP = onSnapshot(pref, (snap) => {
-      if (!snap.exists()) {
+    const unsubP = onSnapshot(
+      pref,
+      (snap) => {
+        if (!snap.exists()) {
+          setMissing(true);
+          setProject(null);
+          setLoading(false);
+          return;
+        }
+        setMissing(false);
+        const d = snap.data() as Record<string, unknown>;
+        const due = firestoreToDate(d.dueDate);
+        setProject({
+          name: String(d.name ?? "Project"),
+          clientName: (d.clientName as string) ?? "",
+          color: String(d.color ?? "#534AB7"),
+          status: String(d.status ?? "active"),
+          dueDate: due,
+        });
+        setSettingsDraft((prev) => ({
+          ...prev,
+          name: String(d.name ?? "Project"),
+          clientName: String(d.clientName ?? ""),
+          color: String(d.color ?? "#534AB7"),
+          status: String(d.status ?? "active"),
+          due: due ? toInputDate(due) : "",
+        }));
+        setLoading(false);
+      },
+      () => {
         setMissing(true);
         setProject(null);
         setLoading(false);
-        return;
-      }
-      setMissing(false);
-      const d = snap.data() as Record<string, unknown>;
-      const due = firestoreToDate(d.dueDate);
-      setProject({
-        name: String(d.name ?? "Project"),
-        clientName: (d.clientName as string) ?? "",
-        color: String(d.color ?? "#534AB7"),
-        status: String(d.status ?? "active"),
-        dueDate: due,
-      });
-      setSettingsDraft((prev) => ({
-        ...prev,
-        name: String(d.name ?? "Project"),
-        clientName: String(d.clientName ?? ""),
-        color: String(d.color ?? "#534AB7"),
-        status: String(d.status ?? "active"),
-        due: due ? toInputDate(due) : "",
-      }));
-      setLoading(false);
-    });
+      },
+    );
 
     const tref = collection(db, "organizations", orgId, "projects", projectId, "tasks");
     const unsubT = onSnapshot(
@@ -348,18 +356,53 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
   }
 
   if (loading && !project && !missing) {
-    return <p className="text-sm text-flowpm-muted">Loading…</p>;
+    return (
+      <PageMotion>
+        <div className="w-full min-w-0 max-w-full space-y-6">
+          <div className="rounded-xl border border-flowpm-border bg-flowpm-surface p-5 shadow-card">
+            <div className="h-3 w-24 animate-pulse rounded bg-flowpm-border" />
+            <div className="mt-4 h-8 max-w-md animate-pulse rounded-lg bg-flowpm-border" />
+            <div className="mt-3 h-4 w-48 animate-pulse rounded bg-flowpm-border" />
+          </div>
+          <div className="flex h-11 animate-pulse gap-1 rounded-lg bg-flowpm-border/60 p-1" />
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className="min-h-[180px] rounded-xl border border-flowpm-border bg-flowpm-surface p-3 shadow-card"
+              >
+                <div className="mb-3 h-4 w-20 animate-pulse rounded bg-flowpm-border" />
+                <div className="h-16 animate-pulse rounded-lg bg-flowpm-canvas" />
+              </div>
+            ))}
+          </div>
+          <p className="text-center text-xs text-flowpm-muted">Loading project…</p>
+        </div>
+      </PageMotion>
+    );
   }
   if (missing) {
     return (
       <PageMotion>
-        <p className="text-sm text-flowpm-muted">Project not found.</p>
-        <Link href="/projects" className="mt-4 inline-block text-sm text-flowpm-primary hover:underline">
-          ← All projects
-        </Link>
+        <div className="rounded-xl border border-flowpm-border bg-flowpm-surface p-8 text-center shadow-card">
+          <p className="text-sm font-medium text-flowpm-body">We couldn&apos;t find this project.</p>
+          <p className="mt-2 text-xs text-flowpm-muted">It may have been removed or you don&apos;t have access.</p>
+          <Link
+            href="/projects"
+            className="mt-6 inline-flex text-sm font-medium text-flowpm-primary hover:underline"
+          >
+            ← Back to all projects
+          </Link>
+        </div>
       </PageMotion>
     );
   }
+
+  if (!project) return null;
+
+  const dueStr = project.dueDate
+    ? project.dueDate.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+    : null;
 
   return (
     <PageMotion>
@@ -367,20 +410,54 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
       {taskError && !taskSheetOpen ? (
         <p className="mb-3 text-xs text-flowpm-danger">{taskError}</p>
       ) : null}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <Link href="/projects" className="text-xs font-medium text-flowpm-primary hover:underline">
-            ← All projects
-          </Link>
-          <p className="mt-1 text-sm text-flowpm-muted">
-            <span className="font-medium text-flowpm-body">{project?.name}</span>
-            <span className="text-flowpm-muted"> · </span>
-            <span className="font-mono text-xs">#{projectId.slice(0, 8)}</span>
-          </p>
+
+      <div className="mb-6 rounded-xl border border-flowpm-border bg-flowpm-surface p-4 shadow-card sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 gap-4">
+            <div
+              className="hidden h-14 w-1.5 shrink-0 rounded-full sm:block"
+              style={{ backgroundColor: project.color }}
+              aria-hidden
+            />
+            <div className="min-w-0 flex-1">
+              <Link href="/projects" className="text-xs font-medium text-flowpm-primary hover:underline">
+                ← All projects
+              </Link>
+              <h1 className="mt-2 font-heading text-xl font-semibold tracking-tight text-flowpm-dark sm:text-2xl">
+                {project.name}
+              </h1>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-flowpm-muted">
+                {project.clientName ? (
+                  <span>{project.clientName}</span>
+                ) : (
+                  <span className="italic opacity-80">No client label</span>
+                )}
+                <span className="text-flowpm-border" aria-hidden>
+                  ·
+                </span>
+                <span className="font-mono text-xs text-flowpm-muted">#{projectId.slice(0, 8)}</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-col sm:items-end">
+            <Badge
+              variant="secondary"
+              className="w-fit capitalize bg-flowpm-canvas text-flowpm-body dark:bg-white/10"
+            >
+              {project.status}
+            </Badge>
+            {dueStr ? (
+              <p className="text-xs text-flowpm-muted">
+                Due <span className="font-medium text-flowpm-body">{dueStr}</span>
+              </p>
+            ) : (
+              <p className="text-xs text-flowpm-muted">No due date</p>
+            )}
+          </div>
         </div>
       </div>
 
-      <Tabs defaultValue="board" className="w-full min-w-0">
+      <Tabs key={projectId} defaultValue="board" className="w-full min-w-0">
         <TabsList className="mb-6 flex h-auto w-full min-w-0 flex-wrap gap-1 bg-flowpm-surface p-1">
           <TabsTrigger
             value="board"
@@ -415,6 +492,12 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
         </TabsList>
 
         <TabsContent value="board" className="mt-0 w-full min-w-0">
+          {tasks.length === 0 ? (
+            <p className="mb-4 rounded-lg border border-dashed border-flowpm-border bg-flowpm-canvas/50 px-4 py-3 text-sm text-flowpm-muted dark:bg-white/[0.04]">
+              No tasks yet — use <span className="font-medium text-flowpm-body">+ Add task</span> under any column.
+              Columns are Todo, In progress, Review, and Done.
+            </p>
+          ) : null}
           <div
             className={cn(
               "w-full min-w-0 overflow-x-auto overflow-y-visible pb-2 [-webkit-overflow-scrolling:touch]",
