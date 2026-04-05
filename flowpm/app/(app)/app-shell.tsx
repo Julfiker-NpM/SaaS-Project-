@@ -74,7 +74,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         organizationName={org.name}
         onSignOut={handleSignOut}
       />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <TopBar
           user={{ name: profile.name, email }}
           organizationName={org.name}
@@ -82,7 +82,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           userId={firebaseUser.uid}
           orgId={orgId}
         />
-        <div className="min-w-0 flex-1 overflow-auto">
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto">
           <div className="mx-auto w-full min-w-0 max-w-[1200px] px-4 py-6 md:px-8 md:py-8">{children}</div>
         </div>
       </div>

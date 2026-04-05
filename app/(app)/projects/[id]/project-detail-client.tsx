@@ -457,41 +457,41 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
         </div>
       </div>
 
-      <Tabs key={projectId} defaultValue="board" className="w-full min-w-0">
-        <TabsList className="mb-6 flex h-auto w-full min-w-0 flex-wrap gap-1 bg-flowpm-surface p-1">
+      <Tabs key={projectId} defaultValue="board" className="w-full">
+        <TabsList className="mb-4 flex h-auto w-full min-w-0 flex-nowrap gap-1 overflow-x-auto overflow-y-hidden bg-flowpm-surface p-1 [-webkit-overflow-scrolling:touch] md:mb-6 md:flex-wrap md:overflow-x-visible md:overflow-y-visible">
           <TabsTrigger
             value="board"
-            className="min-h-9 min-w-0 basis-[calc(50%-0.125rem)] px-2 sm:flex-1 sm:basis-0"
+            className="min-h-9 shrink-0 whitespace-nowrap px-3 md:min-w-0 md:shrink md:basis-[calc(50%-0.125rem)] md:flex-1 lg:basis-0"
           >
             Board
           </TabsTrigger>
           <TabsTrigger
             value="list"
-            className="min-h-9 min-w-0 basis-[calc(50%-0.125rem)] px-2 sm:flex-1 sm:basis-0"
+            className="min-h-9 shrink-0 whitespace-nowrap px-3 md:min-w-0 md:shrink md:basis-[calc(50%-0.125rem)] md:flex-1 lg:basis-0"
           >
             List
           </TabsTrigger>
           <TabsTrigger
             value="timeline"
-            className="min-h-9 min-w-0 basis-[calc(50%-0.125rem)] px-2 sm:flex-1 sm:basis-0"
+            className="min-h-9 shrink-0 whitespace-nowrap px-3 md:min-w-0 md:shrink md:basis-[calc(50%-0.125rem)] md:flex-1 lg:basis-0"
           >
             Timeline
           </TabsTrigger>
           <TabsTrigger
             value="files"
-            className="min-h-9 min-w-0 basis-[calc(50%-0.125rem)] px-2 sm:flex-1 sm:basis-0"
+            className="min-h-9 shrink-0 whitespace-nowrap px-3 md:min-w-0 md:shrink md:basis-[calc(50%-0.125rem)] md:flex-1 lg:basis-0"
           >
             Files
           </TabsTrigger>
           <TabsTrigger
             value="settings"
-            className="min-h-9 min-w-0 basis-full px-2 sm:flex-1 sm:basis-0"
+            className="min-h-9 shrink-0 whitespace-nowrap px-3 md:min-w-0 md:basis-full md:shrink md:flex-1 lg:basis-0"
           >
             Settings
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="board" className="mt-0 w-full min-w-0">
+        <TabsContent value="board" className="mt-0 min-h-0 w-full min-w-0">
           {tasks.length === 0 ? (
             <p className="mb-4 rounded-lg border border-dashed border-flowpm-border bg-flowpm-canvas/50 px-4 py-3 text-sm text-flowpm-muted dark:bg-white/[0.04]">
               No tasks yet — use <span className="font-medium text-flowpm-body">+ Add task</span> under any column.
@@ -501,23 +501,20 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
           <div
             className={cn(
               "w-full min-w-0 overflow-x-auto overflow-y-visible pb-2 [-webkit-overflow-scrolling:touch]",
-              "xl:overflow-x-visible xl:pb-0",
             )}
           >
             <div
               className={cn(
                 "flex w-full min-w-0 flex-col gap-4",
                 "md:flex-row md:flex-nowrap md:w-max md:max-w-none md:gap-4",
-                "xl:w-full xl:max-w-none",
               )}
             >
             {columns.map((col) => (
               <div
                 key={col.id}
                 className={cn(
-                  "flex min-h-[140px] flex-col rounded-xl border border-flowpm-border bg-flowpm-surface p-3 shadow-card",
-                  "w-full md:w-[280px] md:min-w-[280px] md:max-w-[280px] md:shrink-0",
-                  "xl:min-w-0 xl:w-auto xl:max-w-none xl:flex-1 xl:basis-0",
+                  "flex min-h-[140px] w-full shrink-0 flex-col rounded-xl border border-flowpm-border bg-flowpm-surface p-3 shadow-card",
+                  "md:w-[280px] md:min-w-[260px] md:max-w-[280px]",
                 )}
               >
                 <div className="mb-3 flex min-w-0 items-center justify-between gap-2">
