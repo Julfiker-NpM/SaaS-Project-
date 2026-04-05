@@ -20,9 +20,13 @@ service cloud.firestore {
       return isOrgMember(orgId) && orgRole(orgId) in ['owner', 'admin'];
     }
 
+    // Existing org: use get(). Same-transaction org create + first owner member: get() may not see the new org yet; use getAfter().
     function isOrgOwnerUser(orgId) {
-      return signedIn() &&
-        get(/databases/$(database)/documents/organizations/$(orgId)).data.ownerId == request.auth.uid;
+      return signedIn() && (
+        (exists(/databases/$(database)/documents/organizations/$(orgId)) &&
+          get(/databases/$(database)/documents/organizations/$(orgId)).data.ownerId == request.auth.uid) ||
+        getAfter(/databases/$(database)/documents/organizations/$(orgId)).data.ownerId == request.auth.uid
+      );
     }
 
     match /users/{userId} {

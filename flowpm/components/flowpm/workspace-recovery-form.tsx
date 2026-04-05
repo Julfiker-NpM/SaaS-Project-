@@ -9,6 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 function errorText(err: unknown): string {
+  const code =
+    typeof err === "object" && err !== null && "code" in err ? String((err as { code: string }).code) : "";
+  if (code === "permission-denied") {
+    return "Missing or insufficient permissions. Deploy the latest firestore.rules to your Firebase project (firebase deploy --only firestore:rules) so new workspaces can be created.";
+  }
   if (typeof err === "object" && err !== null && "message" in err) {
     const m = (err as { message: unknown }).message;
     if (typeof m === "string" && m.trim()) return m.trim();

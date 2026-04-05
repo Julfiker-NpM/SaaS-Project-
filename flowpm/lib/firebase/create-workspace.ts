@@ -27,17 +27,18 @@ export async function createWorkspaceForNewUser(input: {
       plan: "free",
       createdAt: serverTimestamp(),
     });
-    transaction.set(userRef, {
-      email: input.email,
-      name: input.displayName,
-      currentOrgId: orgRef.id,
-      createdAt: serverTimestamp(),
-    });
+    // Owner member before user doc so rules can relate member create to org create in the same transaction (getAfter).
     transaction.set(memberRef, {
       role: "owner",
       email: input.email,
       name: input.displayName,
       joinedAt: serverTimestamp(),
+    });
+    transaction.set(userRef, {
+      email: input.email,
+      name: input.displayName,
+      currentOrgId: orgRef.id,
+      createdAt: serverTimestamp(),
     });
   });
 
