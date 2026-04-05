@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,45 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [googlePending, setGooglePending] = useState(false);
+
+  function googleErrorMessage(err: unknown): string {
+    const code =
+      err && typeof err === "object" && "code" in err ? String((err as { code: string }).code) : "";
+    if (code === "auth/popup-closed-by-user") return "";
+    if (code === "auth/popup-blocked") {
+      return "Pop-up was blocked. Allow pop-ups for this site or try again.";
+    }
+    if (code === "auth/account-exists-with-different-credential") {
+      return "This email is already registered with another sign-in method. Use email and password.";
+    }
+    if (code === "auth/unauthorized-domain") {
+      return "This domain is not allowed. In Firebase Console → Authentication → Settings, add your site under Authorized domains.";
+    }
+    if (code === "auth/operation-not-allowed") {
+      return "Google sign-in is not enabled in Firebase (Authentication → Sign-in method).";
+    }
+    return "Could not sign in with Google. Try again.";
+  }
+
+  async function onGoogleSignIn() {
+    setError(null);
+    setGooglePending(true);
+    try {
+      const auth = getFirebaseAuth();
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      await signInWithPopup(auth, provider);
+      const dest = nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "/dashboard";
+      router.replace(dest);
+      router.refresh();
+    } catch (err: unknown) {
+      const msg = googleErrorMessage(err);
+      if (msg) setError(msg);
+    } finally {
+      setGooglePending(false);
+    }
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -67,23 +106,29 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
               className="h-10"
             />
           </div>
-          {error ? <p className="text-xs text-flowpm-danger">{error}</p> : null}
           <Button
             type="submit"
-            disabled={pending}
+            disabled={pending || googlePending}
             className="h-10 w-full bg-flowpm-primary hover:bg-flowpm-primary-hover"
           >
             {pending ? "Signing in…" : "Sign in"}
           </Button>
         </form>
+        {error ? <p className="text-xs text-flowpm-danger">{error}</p> : null}
         <div className="relative">
           <Separator />
           <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-flowpm-surface px-2 text-xs text-flowpm-muted">
             or
           </span>
         </div>
-        <Button variant="outline" type="button" className="h-10 w-full" disabled>
-          Continue with Google
+        <Button
+          variant="outline"
+          type="button"
+          className="h-10 w-full border-flowpm-border text-flowpm-dark hover:bg-flowpm-muted/40"
+          disabled={pending || googlePending}
+          onClick={onGoogleSignIn}
+        >
+          {googlePending ? "Connecting…" : "Continue with Google"}
         </Button>
         <p className="text-center text-sm text-flowpm-muted">
           <Link href="/forgot-password" className="text-flowpm-primary hover:underline">
