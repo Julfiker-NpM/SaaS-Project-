@@ -90,7 +90,7 @@ function firestoreListenerMessage(err: unknown, kind: "invites" | "tasks" | "com
     return "Permission denied — deploy latest Firestore rules for this project.";
   }
   if (e?.code === "failed-precondition") {
-    return "Missing Firestore index — run firebase deploy --only firestore:indexes against the same Firebase project as NEXT_PUBLIC_FIREBASE_PROJECT_ID.";
+    return "Missing or still building Firestore index — run firebase deploy --only firestore:indexes for the same project as NEXT_PUBLIC_FIREBASE_PROJECT_ID, then wait a few minutes for indexes to finish building.";
   }
   return e?.message ?? "Query failed";
 }
@@ -141,6 +141,8 @@ export function NotificationBell(props: {
   const [cgInvites, setCgInvites] = useState<InviteNotificationRow[]>([]);
   const [orgInviteErr, setOrgInviteErr] = useState<string | null>(null);
   const [cgInviteErr, setCgInviteErr] = useState<string | null>(null);
+  /** True after org-scoped invite listener has emitted once (success or error), or org query was skipped. */
+  const [orgInvitesReady, setOrgInvitesReady] = useState(false);
   const [tasks, setTasks] = useState<TaskAssignRow[]>([]);
   const [comments, setComments] = useState<TaskCommentRow[]>([]);
   const [tasksError, setTasksError] = useState<string | null>(null);
@@ -153,8 +155,11 @@ export function NotificationBell(props: {
   }, [orgInvites, cgInvites]);
   const inviteError = useMemo(() => {
     if (invites.length > 0) return null;
-    return orgInviteErr ?? cgInviteErr;
-  }, [invites.length, orgInviteErr, cgInviteErr]);
+    if (!orgInvitesReady) return null;
+    // Org-scoped query covers the current workspace. Collection-group errors (e.g. missing index)
+    // only affect cross-org discovery; avoid a blocking banner for that.
+    return orgInviteErr;
+  }, [invites.length, orgInviteErr, orgInvitesReady]);
   const [open, setOpen] = useState(false);
   const [desktopPermission, setDesktopPermission] = useState<
     NotificationPermission | "unsupported"
@@ -168,11 +173,13 @@ export function NotificationBell(props: {
     if (!normalizedEmail?.includes("@")) {
       setOrgInvites([]);
       setOrgInviteErr(null);
+      setOrgInvitesReady(true);
       return;
     }
     if (!orgId) {
       setOrgInvites([]);
       setOrgInviteErr(null);
+      setOrgInvitesReady(true);
       return;
     }
 
@@ -182,10 +189,12 @@ export function NotificationBell(props: {
       where("email", "==", normalizedEmail),
     );
     let first = true;
+    setOrgInvitesReady(false);
 
     const unsub = onSnapshot(
       q,
       (snapshot) => {
+        setOrgInvitesReady(true);
         setOrgInviteErr(null);
         const rows = mapInviteDocs(snapshot);
         if (!first) {
@@ -210,12 +219,15 @@ export function NotificationBell(props: {
       },
       (listenerErr) => {
         console.error("[FlowPM] org invite notifications query failed", listenerErr);
+        setOrgInvitesReady(true);
         setOrgInviteErr(firestoreListenerMessage(listenerErr, "invites"));
         setOrgInvites([]);
       },
     );
 
-    return () => unsub();
+    return () => {
+      unsub();
+    };
   }, [orgId, normalizedEmail]);
 
   useEffect(() => {
