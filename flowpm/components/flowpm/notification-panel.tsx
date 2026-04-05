@@ -73,44 +73,15 @@ function mapInviteDocs(snapshot: QuerySnapshot): InviteNotificationRow[] {
   return rows;
 }
 
-function orgProjectFromTaskDoc(d: QueryDocumentSnapshot): { orgId: string; projectId: string } | null {
-  const projectDoc = d.ref.parent?.parent;
-  const projectsCol = projectDoc?.parent;
-  const orgDoc = projectsCol?.parent;
-  const orgId = orgDoc?.id ?? null;
-  const projectId = projectDoc?.id ?? null;
-  if (!orgId || !projectId) return null;
-  return { orgId, projectId };
-}
-
-function mapAssignedTasks(
-  snapshot: QuerySnapshot,
-  currentOrgId: string,
-): TaskAssignRow[] {
-  const rows: TaskAssignRow[] = [];
-  for (const d of snapshot.docs) {
-    const loc = orgProjectFromTaskDoc(d);
-    if (!loc || loc.orgId !== currentOrgId) continue;
-    const data = d.data() as Record<string, unknown>;
-    const status = String(data.status ?? "todo");
-    if (status === "done") continue;
-    const title = String(data.title ?? "Task");
-    rows.push({
-      id: d.id,
-      orgId: loc.orgId,
-      projectId: loc.projectId,
-      title,
-      status,
-      href: `/projects/${loc.projectId}`,
-    });
-  }
-  rows.sort((a, b) => a.title.localeCompare(b.title));
-  return rows;
-}
-
-function firestoreListenerMessage(err: unknown): string {
+function firestoreListenerMessage(err: unknown, kind: "invites" | "tasks" | "comments" = "comments"): string {
   const e = err as FirebaseError;
   if (e?.code === "permission-denied") {
+    if (kind === "invites") {
+      return "Deploy rules to the same Firebase project as the app (NEXT_PUBLIC_FIREBASE_PROJECT_ID). Email sign-in must provide an email on the auth token.";
+    }
+    if (kind === "tasks") {
+      return "Could not load assigned tasks — deploy latest rules and ensure you are a member of this workspace.";
+    }
     return "Permission denied — deploy latest Firestore rules for this project.";
   }
   if (e?.code === "failed-precondition") {
@@ -211,7 +182,7 @@ export function NotificationBell(props: {
       },
       (listenerErr) => {
         console.error("[FlowPM] invite notifications query failed", listenerErr);
-        setInviteError(firestoreListenerMessage(listenerErr));
+        setInviteError(firestoreListenerMessage(listenerErr, "invites"));
         setInvites([]);
       },
     );
@@ -222,46 +193,111 @@ export function NotificationBell(props: {
   useEffect(() => {
     if (!userId || !orgId) {
       setTasks([]);
+      setTasksError(null);
       return;
     }
 
     const db = getFirebaseDb();
-    const q = query(collectionGroup(db, "tasks"), where("assigneeId", "==", userId));
-    let first = true;
+    const projectsCol = collection(db, "organizations", orgId, "projects");
+    const taskUnsubs = new Map<string, () => void>();
+    const rowsByKey = new Map<string, TaskAssignRow>();
+    const seenFirstTaskSnap = new Set<string>();
 
-    const unsub = onSnapshot(
-      q,
-      (snapshot) => {
-        setTasksError(null);
-        const rows = mapAssignedTasks(snapshot, orgId);
-        if (!first) {
-          for (const ch of snapshot.docChanges()) {
-            if (ch.type !== "added") continue;
-            const loc = orgProjectFromTaskDoc(ch.doc);
-            if (!loc || loc.orgId !== orgId) continue;
-            const data = ch.doc.data() as Record<string, unknown>;
-            if (String(data.status ?? "") === "done") continue;
-            if (String(data.assigneeId ?? "") !== userId) continue;
-            const title = String(data.title ?? "Task");
-            notifyDesktop(
-              "Task assigned",
-              `${title} — open FlowPM to view.`,
-              `flowpm-task-${loc.projectId}-${ch.doc.id}`,
-            );
+    const mergeAndSet = () => {
+      setTasks(
+        Array.from(rowsByKey.values()).sort((a, b) => a.title.localeCompare(b.title)),
+      );
+    };
+
+    const removeProject = (pid: string) => {
+      const u = taskUnsubs.get(pid);
+      if (u) {
+        u();
+        taskUnsubs.delete(pid);
+      }
+      for (const k of [...rowsByKey.keys()]) {
+        if (k.startsWith(`${pid}:`)) rowsByKey.delete(k);
+      }
+      seenFirstTaskSnap.delete(pid);
+    };
+
+    const attachProject = (pid: string) => {
+      if (taskUnsubs.has(pid)) return;
+      const tq = query(
+        collection(db, "organizations", orgId, "projects", pid, "tasks"),
+        where("assigneeId", "==", userId),
+      );
+      const unsubTasks = onSnapshot(
+        tq,
+        (snap) => {
+          setTasksError(null);
+          for (const k of [...rowsByKey.keys()]) {
+            if (k.startsWith(`${pid}:`)) rowsByKey.delete(k);
           }
-        } else {
-          first = false;
+          const firstSnap = !seenFirstTaskSnap.has(pid);
+          if (!firstSnap) {
+            for (const ch of snap.docChanges()) {
+              if (ch.type !== "added") continue;
+              const data = ch.doc.data() as Record<string, unknown>;
+              if (String(data.status ?? "") === "done") continue;
+              if (String(data.assigneeId ?? "") !== userId) continue;
+              notifyDesktop(
+                "Task assigned",
+                `${String(data.title ?? "Task")} — open FlowPM to view.`,
+                `flowpm-task-${pid}-${ch.doc.id}`,
+              );
+            }
+          }
+          seenFirstTaskSnap.add(pid);
+
+          for (const d of snap.docs) {
+            const data = d.data() as Record<string, unknown>;
+            if (String(data.assigneeId ?? "") !== userId) continue;
+            const status = String(data.status ?? "todo");
+            if (status === "done") continue;
+            rowsByKey.set(`${pid}:${d.id}`, {
+              id: d.id,
+              orgId,
+              projectId: pid,
+              title: String(data.title ?? "Task"),
+              status,
+              href: `/projects/${pid}`,
+            });
+          }
+          mergeAndSet();
+        },
+        (listenerErr) => {
+          console.error("[FlowPM] assigned tasks notifications query failed", listenerErr);
+          setTasksError(firestoreListenerMessage(listenerErr, "tasks"));
+        },
+      );
+      taskUnsubs.set(pid, unsubTasks);
+    };
+
+    const unsubProjects = onSnapshot(
+      projectsCol,
+      (projSnap) => {
+        setTasksError(null);
+        const ids = new Set(projSnap.docs.map((d) => d.id));
+        for (const pid of [...taskUnsubs.keys()]) {
+          if (!ids.has(pid)) removeProject(pid);
         }
-        setTasks(rows);
+        for (const pid of ids) attachProject(pid);
+        mergeAndSet();
       },
       (listenerErr) => {
-        console.error("[FlowPM] assigned tasks notifications query failed", listenerErr);
-        setTasksError(firestoreListenerMessage(listenerErr));
+        console.error("[FlowPM] projects list listener for notifications failed", listenerErr);
+        setTasksError(firestoreListenerMessage(listenerErr, "tasks"));
         setTasks([]);
       },
     );
 
-    return () => unsub();
+    return () => {
+      unsubProjects();
+      for (const u of taskUnsubs.values()) u();
+      taskUnsubs.clear();
+      rowsByKey.clear();
+    };
   }, [userId, orgId]);
 
   useEffect(() => {
@@ -315,7 +351,7 @@ export function NotificationBell(props: {
       },
       (listenerErr) => {
         console.error("[FlowPM] task comments notifications query failed", listenerErr);
-        setCommentsError(firestoreListenerMessage(listenerErr));
+        setCommentsError(firestoreListenerMessage(listenerErr, "comments"));
         setComments([]);
       },
     );
