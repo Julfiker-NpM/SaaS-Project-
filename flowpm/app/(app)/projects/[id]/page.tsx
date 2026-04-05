@@ -9,7 +9,7 @@ import { ProjectDetailClient } from "./project-detail-client";
 export default function ProjectDetailPage() {
   const params = useParams();
   const projectId = typeof params.id === "string" ? params.id : "";
-  const { orgId, authReady } = useFlowAuth();
+  const { orgId, authReady, memberRole } = useFlowAuth();
 
   if (!authReady) {
     return (
@@ -39,5 +39,5 @@ export default function ProjectDetailPage() {
     );
   }
 
-  return <ProjectDetailClient orgId={orgId} projectId={projectId} />;
+  return <ProjectDetailClient orgId={orgId} projectId={projectId} memberRole={memberRole} />;
 }

@@ -8,6 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/lib/button-variants";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
+import { canMutateWorkspaceContent } from "@/lib/flowpm/access";
+import {
+  FREE_PLAN_MAX_PROJECTS,
+  freePlanProjectLimitMessage,
+  isFreePlan,
+} from "@/lib/flowpm/plan-limits";
 
 export type ProjectListItem = {
   id: string;
@@ -25,7 +31,15 @@ const statusBadge: Record<string, string> = {
   hold: "bg-flowpm-canvas text-flowpm-muted dark:bg-white/10",
 };
 
-export function ProjectsListClient({ projects }: { projects: ProjectListItem[] }) {
+export function ProjectsListClient(props: {
+  projects: ProjectListItem[];
+  memberRole: string | null;
+  orgPlan: string | null | undefined;
+}) {
+  const { projects, memberRole, orgPlan } = props;
+  const canMutate = canMutateWorkspaceContent(memberRole);
+  const atFreeProjectCap = isFreePlan(orgPlan) && projects.length >= FREE_PLAN_MAX_PROJECTS;
+
   return (
     <PageMotion>
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -33,24 +47,54 @@ export function ProjectsListClient({ projects }: { projects: ProjectListItem[] }
           <h1 className="font-heading text-2xl font-semibold tracking-tight text-flowpm-dark">Projects</h1>
           <p className="mt-1 text-sm text-flowpm-muted">All client work in one place — open a card to manage tasks.</p>
         </div>
-        <Link
-          href="/projects/new"
-          className={cn(
-            buttonVariants({ variant: "default" }),
-            "inline-flex h-10 w-full shrink-0 items-center justify-center gap-2 bg-flowpm-primary hover:bg-flowpm-primary-hover sm:w-auto",
-          )}
-        >
-          <Plus className="size-4" aria-hidden />
-          New project
-        </Link>
+        {canMutate ? (
+          atFreeProjectCap ? (
+            <span
+              title={freePlanProjectLimitMessage(FREE_PLAN_MAX_PROJECTS)}
+              className={cn(
+                buttonVariants({ variant: "default" }),
+                "pointer-events-none inline-flex h-10 w-full shrink-0 cursor-not-allowed items-center justify-center gap-2 opacity-50 sm:w-auto",
+              )}
+            >
+              <Plus className="size-4" aria-hidden />
+              New project
+            </span>
+          ) : (
+            <Link
+              href="/projects/new"
+              className={cn(
+                buttonVariants({ variant: "default" }),
+                "inline-flex h-10 w-full shrink-0 items-center justify-center gap-2 bg-flowpm-primary hover:bg-flowpm-primary-hover sm:w-auto",
+              )}
+            >
+              <Plus className="size-4" aria-hidden />
+              New project
+            </Link>
+          )
+        ) : null}
       </div>
+      {canMutate && atFreeProjectCap ? (
+        <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-flowpm-body dark:text-amber-100/90">
+          {freePlanProjectLimitMessage(FREE_PLAN_MAX_PROJECTS)}
+        </p>
+      ) : null}
       {projects.length === 0 ? (
         <p className="text-sm text-flowpm-muted">
           No projects yet.{" "}
-          <Link href="/projects/new" className="font-medium text-flowpm-primary hover:underline">
-            Create a project
-          </Link>
-          .
+          {canMutate ? (
+            atFreeProjectCap ? (
+              <span className="text-flowpm-body">{freePlanProjectLimitMessage(FREE_PLAN_MAX_PROJECTS)}</span>
+            ) : (
+              <>
+                <Link href="/projects/new" className="font-medium text-flowpm-primary hover:underline">
+                  Create a project
+                </Link>
+                .
+              </>
+            )
+          ) : (
+            <>Ask a workspace admin to grant member access if you need to create projects.</>
+          )}
         </p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

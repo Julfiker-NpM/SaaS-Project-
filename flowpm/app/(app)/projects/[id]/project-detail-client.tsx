@@ -8,7 +8,6 @@ import {
   deleteDoc,
   deleteField,
   doc,
-  getDoc,
   getDocs,
   onSnapshot,
   serverTimestamp,
@@ -34,6 +33,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { canMutateWorkspaceContent, isOrgAdminRole } from "@/lib/flowpm/access";
 
 const STATUS_ORDER = ["todo", "in_progress", "review", "done"] as const;
 type TaskStatus = (typeof STATUS_ORDER)[number];
@@ -99,8 +99,12 @@ function mapTaskDoc(id: string, data: Record<string, unknown>): TaskRow {
   };
 }
 
-export function ProjectDetailClient(props: { orgId: string; projectId: string }) {
-  const { orgId, projectId } = props;
+export function ProjectDetailClient(props: {
+  orgId: string;
+  projectId: string;
+  memberRole: string | null;
+}) {
+  const { orgId, projectId, memberRole } = props;
   const db = getFirebaseDb();
 
   const [missing, setMissing] = useState(false);
@@ -133,7 +137,8 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
   });
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
-  const [isOrgAdmin, setIsOrgAdmin] = useState(false);
+  const canEdit = canMutateWorkspaceContent(memberRole);
+  const isOrgAdmin = isOrgAdminRole(memberRole);
   const [portalBusy, setPortalBusy] = useState(false);
   const [portalMessage, setPortalMessage] = useState<string | null>(null);
   const [portalOrigin, setPortalOrigin] = useState("");
@@ -141,23 +146,6 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
   useEffect(() => {
     if (typeof window !== "undefined") setPortalOrigin(window.location.origin);
   }, []);
-
-  useEffect(() => {
-    const uid = getFirebaseAuth().currentUser?.uid;
-    if (!uid) {
-      setIsOrgAdmin(false);
-      return;
-    }
-    let cancelled = false;
-    getDoc(doc(db, "organizations", orgId, "members", uid)).then((snap) => {
-      if (cancelled) return;
-      const role = String((snap.data() as Record<string, unknown> | undefined)?.role ?? "");
-      setIsOrgAdmin(role === "owner" || role === "admin");
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [db, orgId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -284,6 +272,7 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
   );
 
   async function addTask(status: TaskStatus) {
+    if (!canEdit) return;
     setTaskError(null);
     try {
       const colRef = collection(db, "organizations", orgId, "projects", projectId, "tasks");
@@ -304,7 +293,7 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
   }
 
   async function saveTask() {
-    if (!selectedTaskId) return;
+    if (!canEdit || !selectedTaskId) return;
     const st = tasks.find((t) => t.id === selectedTaskId);
     if (!st) return;
     setTaskError(null);
@@ -338,7 +327,7 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
   }
 
   async function removeTask() {
-    if (!selectedTaskId) return;
+    if (!canEdit || !selectedTaskId) return;
     setTaskError(null);
     setTaskSaving(true);
     try {
@@ -354,6 +343,7 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
 
   async function saveProjectSettings(e: React.FormEvent) {
     e.preventDefault();
+    if (!canEdit) return;
     setSettingsError(null);
     setSettingsSaving(true);
     try {
@@ -565,6 +555,12 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
         </div>
       </div>
 
+      {!canEdit ? (
+        <div className="mb-4 rounded-lg border border-flowpm-border bg-flowpm-canvas/60 px-4 py-3 text-sm text-flowpm-body dark:bg-white/[0.06]">
+          You have <span className="font-medium">view-only</span> access. Tasks and project settings cannot be changed.
+        </div>
+      ) : null}
+
       <Tabs key={projectId} defaultValue="board" className="w-full">
         <TabsList className="mb-4 flex h-auto w-full min-w-0 flex-nowrap gap-1 overflow-x-auto overflow-y-hidden bg-flowpm-surface p-1 [-webkit-overflow-scrolling:touch] md:mb-6 md:flex-wrap md:overflow-x-visible md:overflow-y-visible">
           <TabsTrigger
@@ -591,19 +587,27 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
           >
             Files
           </TabsTrigger>
-          <TabsTrigger
-            value="settings"
-            className="min-h-9 shrink-0 whitespace-nowrap px-3 md:min-w-0 md:basis-full md:shrink md:flex-1 lg:basis-0"
-          >
-            Settings
-          </TabsTrigger>
+          {canEdit ? (
+            <TabsTrigger
+              value="settings"
+              className="min-h-9 shrink-0 whitespace-nowrap px-3 md:min-w-0 md:basis-full md:shrink md:flex-1 lg:basis-0"
+            >
+              Settings
+            </TabsTrigger>
+          ) : null}
         </TabsList>
 
         <TabsContent value="board" className="mt-0 min-h-0 w-full min-w-0">
           {tasks.length === 0 ? (
             <p className="mb-4 rounded-lg border border-dashed border-flowpm-border bg-flowpm-canvas/50 px-4 py-3 text-sm text-flowpm-muted dark:bg-white/[0.04]">
-              No tasks yet — use <span className="font-medium text-flowpm-body">+ Add task</span> under any column.
-              Columns are Todo, In progress, Review, and Done.
+              {canEdit ? (
+                <>
+                  No tasks yet — use <span className="font-medium text-flowpm-body">+ Add task</span> under any column.
+                  Columns are Todo, In progress, Review, and Done.
+                </>
+              ) : (
+                <>No tasks in this project yet.</>
+              )}
             </p>
           ) : null}
           <div
@@ -653,15 +657,17 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
                       </button>
                     ))
                   )}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="mt-1 h-8 w-full border-dashed text-xs"
-                    onClick={() => void addTask(col.id)}
-                  >
-                    + Add task
-                  </Button>
+                  {canEdit ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-1 h-8 w-full border-dashed text-xs"
+                      onClick={() => void addTask(col.id)}
+                    >
+                      + Add task
+                    </Button>
+                  ) : null}
                 </div>
               </div>
             ))}
@@ -687,7 +693,9 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
                     {tasks.length === 0 ? (
                       <tr>
                         <td colSpan={5} className="px-4 py-8 text-center text-flowpm-muted">
-                          No tasks yet. Use the Board tab to add some.
+                          {canEdit
+                            ? "No tasks yet. Use the Board tab to add some."
+                            : "No tasks in this project yet."}
                         </td>
                       </tr>
                     ) : (
@@ -764,6 +772,7 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
           </Card>
         </TabsContent>
 
+        {canEdit ? (
         <TabsContent value="settings" className="mt-0 w-full min-w-0">
           <Card className="border-flowpm-border">
             <CardContent className="p-6">
@@ -891,6 +900,7 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
             </CardContent>
           </Card>
         </TabsContent>
+        ) : null}
       </Tabs>
 
       <Sheet
@@ -902,8 +912,12 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
       >
         <SheetContent side="right" className="w-full border-flowpm-border sm:max-w-md">
           <SheetHeader>
-            <SheetTitle>Edit task</SheetTitle>
-            <SheetDescription>Changes save to your workspace for everyone.</SheetDescription>
+            <SheetTitle>{canEdit ? "Edit task" : "Task details"}</SheetTitle>
+            <SheetDescription>
+              {canEdit
+                ? "Changes save to your workspace for everyone."
+                : "You can view this task; editing requires member access."}
+            </SheetDescription>
           </SheetHeader>
           <div className="flex flex-col gap-4 px-4">
             <div className="space-y-2">
@@ -913,6 +927,7 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
                 value={taskDraft.title}
                 onChange={(e) => setTaskDraft((d) => ({ ...d, title: e.target.value }))}
                 className="h-10"
+                disabled={!canEdit}
               />
             </div>
             <div className="space-y-2">
@@ -922,6 +937,7 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
                 value={taskDraft.description}
                 onChange={(e) => setTaskDraft((d) => ({ ...d, description: e.target.value }))}
                 rows={4}
+                disabled={!canEdit}
                 className={cn(
                   "w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm",
                   "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
@@ -936,6 +952,7 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
                 <select
                   id="t-status"
                   value={taskDraft.status}
+                  disabled={!canEdit}
                   onChange={(e) =>
                     setTaskDraft((d) => ({ ...d, status: normalizeStatus(e.target.value) }))
                   }
@@ -957,6 +974,7 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
                 <select
                   id="t-priority"
                   value={taskDraft.priority}
+                  disabled={!canEdit}
                   onChange={(e) => setTaskDraft((d) => ({ ...d, priority: e.target.value }))}
                   className={cn(
                     "h-10 w-full rounded-lg border border-input bg-background px-2.5 text-sm text-foreground",
@@ -977,6 +995,7 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
               <select
                 id="t-assign"
                 value={taskDraft.assigneeId}
+                disabled={!canEdit}
                 onChange={(e) => setTaskDraft((d) => ({ ...d, assigneeId: e.target.value }))}
                 className={cn(
                   "h-10 w-full rounded-lg border border-input bg-background px-2.5 text-sm text-foreground",
@@ -1000,33 +1019,42 @@ export function ProjectDetailClient(props: { orgId: string; projectId: string })
                 value={taskDraft.due}
                 onChange={(e) => setTaskDraft((d) => ({ ...d, due: e.target.value }))}
                 className="h-10"
+                disabled={!canEdit}
               />
             </div>
             {taskError ? <p className="text-xs text-flowpm-danger">{taskError}</p> : null}
           </div>
           <SheetFooter className="flex-col gap-2 sm:flex-col">
-            <div className="flex w-full gap-2">
-              <Button
-                type="button"
-                className="flex-1 bg-flowpm-primary hover:bg-flowpm-primary-hover"
-                disabled={taskSaving}
-                onClick={() => void saveTask()}
-              >
-                {taskSaving ? "Saving…" : "Save task"}
+            {canEdit ? (
+              <>
+                <div className="flex w-full gap-2">
+                  <Button
+                    type="button"
+                    className="flex-1 bg-flowpm-primary hover:bg-flowpm-primary-hover"
+                    disabled={taskSaving}
+                    onClick={() => void saveTask()}
+                  >
+                    {taskSaving ? "Saving…" : "Save task"}
+                  </Button>
+                  <Button type="button" variant="outline" disabled={taskSaving} onClick={() => setTaskSheetOpen(false)}>
+                    Cancel
+                  </Button>
+                </div>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="w-full"
+                  disabled={taskSaving}
+                  onClick={() => void removeTask()}
+                >
+                  Delete task
+                </Button>
+              </>
+            ) : (
+              <Button type="button" variant="outline" className="w-full" onClick={() => setTaskSheetOpen(false)}>
+                Close
               </Button>
-              <Button type="button" variant="outline" disabled={taskSaving} onClick={() => setTaskSheetOpen(false)}>
-                Cancel
-              </Button>
-            </div>
-            <Button
-              type="button"
-              variant="destructive"
-              className="w-full"
-              disabled={taskSaving}
-              onClick={() => void removeTask()}
-            >
-              Delete task
-            </Button>
+            )}
           </SheetFooter>
         </SheetContent>
       </Sheet>

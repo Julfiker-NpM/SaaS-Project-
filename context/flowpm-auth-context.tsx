@@ -30,6 +30,8 @@ type FlowAuthState = {
   profile: UserProfile | null;
   org: OrgSummary | null;
   orgId: string | null;
+  /** Role from `organizations/{orgId}/members/{uid}` — owner | admin | member | viewer */
+  memberRole: string | null;
   loading: boolean;
   /** True after the first onAuthStateChanged callback finishes (avoids flash / wrong redirects on layout changes). */
   authReady: boolean;
@@ -44,11 +46,12 @@ async function loadProfileAndOrg(uid: string): Promise<{
   profile: UserProfile | null;
   org: OrgSummary | null;
   orgId: string | null;
+  memberRole: string | null;
 }> {
   const db = getFirebaseDb();
   const userSnap = await getDoc(doc(db, "users", uid));
   if (!userSnap.exists()) {
-    return { profile: null, org: null, orgId: null };
+    return { profile: null, org: null, orgId: null, memberRole: null };
   }
   const data = userSnap.data();
   const profile: UserProfile = {
@@ -58,11 +61,14 @@ async function loadProfileAndOrg(uid: string): Promise<{
   };
   const orgId = profile.currentOrgId;
   if (!orgId) {
-    return { profile, org: null, orgId: null };
+    return { profile, org: null, orgId: null, memberRole: null };
   }
-  const orgSnap = await getDoc(doc(db, "organizations", orgId));
+  const [orgSnap, memSnap] = await Promise.all([
+    getDoc(doc(db, "organizations", orgId)),
+    getDoc(doc(db, "organizations", orgId, "members", uid)),
+  ]);
   if (!orgSnap.exists()) {
-    return { profile, org: null, orgId };
+    return { profile, org: null, orgId, memberRole: null };
   }
   const o = orgSnap.data();
   const org: OrgSummary = {
@@ -70,7 +76,8 @@ async function loadProfileAndOrg(uid: string): Promise<{
     slug: (o.slug as string) ?? "",
     plan: (o.plan as string) ?? "free",
   };
-  return { profile, org, orgId };
+  const memberRole = memSnap.exists() ? String((memSnap.data() as Record<string, unknown>).role ?? "") : null;
+  return { profile, org, orgId, memberRole: memberRole || null };
 }
 
 export function FlowAuthProvider({ children }: { children: ReactNode }) {
@@ -78,6 +85,7 @@ export function FlowAuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [org, setOrg] = useState<OrgSummary | null>(null);
   const [orgId, setOrgId] = useState<string | null>(null);
+  const [memberRole, setMemberRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [authReady, setAuthReady] = useState(false);
   const [configMissing, setConfigMissing] = useState(false);
@@ -89,12 +97,14 @@ export function FlowAuthProvider({ children }: { children: ReactNode }) {
       setProfile(null);
       setOrg(null);
       setOrgId(null);
+      setMemberRole(null);
       return;
     }
     const next = await loadProfileAndOrg(u.uid);
     setProfile(next.profile);
     setOrg(next.org);
     setOrgId(next.orgId);
+    setMemberRole(next.memberRole);
   }, []);
 
   useEffect(() => {
@@ -111,6 +121,7 @@ export function FlowAuthProvider({ children }: { children: ReactNode }) {
         setProfile(null);
         setOrg(null);
         setOrgId(null);
+        setMemberRole(null);
         setLoading(false);
         setAuthReady(true);
         return;
@@ -120,6 +131,7 @@ export function FlowAuthProvider({ children }: { children: ReactNode }) {
         setProfile(next.profile);
         setOrg(next.org);
         setOrgId(next.orgId);
+        setMemberRole(next.memberRole);
       } finally {
         setLoading(false);
         setAuthReady(true);
@@ -133,12 +145,13 @@ export function FlowAuthProvider({ children }: { children: ReactNode }) {
       profile,
       org,
       orgId,
+      memberRole,
       loading,
       authReady,
       configMissing,
       refreshProfile,
     }),
-    [firebaseUser, profile, org, orgId, loading, authReady, configMissing, refreshProfile],
+    [firebaseUser, profile, org, orgId, memberRole, loading, authReady, configMissing, refreshProfile],
   );
 
   return <FlowAuthContext.Provider value={value}>{children}</FlowAuthContext.Provider>;

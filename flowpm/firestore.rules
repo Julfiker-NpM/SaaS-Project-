@@ -20,6 +20,11 @@ service cloud.firestore {
       return isOrgMember(orgId) && orgRole(orgId) in ['owner', 'admin'];
     }
 
+    // Viewer: read workspace data only. Member / admin / owner can change projects, tasks, time, etc.
+    function canMutateOrgContent(orgId) {
+      return isOrgMember(orgId) && orgRole(orgId) in ['owner', 'admin', 'member'];
+    }
+
     // Existing org: use get(). Same-transaction org create + first owner member: get() may not see the new org yet; use getAfter().
     function isOrgOwnerUser(orgId) {
       return signedIn() && (
@@ -101,32 +106,35 @@ service cloud.firestore {
       }
 
       match /clients/{clientId} {
-        allow read, write: if isOrgMember(orgId);
+        allow read: if isOrgMember(orgId);
+        allow create, update, delete: if canMutateOrgContent(orgId);
       }
 
       match /projects/{projectId} {
-        allow read, write: if isOrgMember(orgId);
+        allow read: if isOrgMember(orgId);
+        allow create, update, delete: if canMutateOrgContent(orgId);
 
         match /tasks/{taskId} {
-          allow read, write: if isOrgMember(orgId);
+          allow read: if isOrgMember(orgId);
+          allow create, update, delete: if canMutateOrgContent(orgId);
         }
       }
 
       match /timeEntries/{entryId} {
         allow read: if isOrgMember(orgId);
-        allow create: if isOrgMember(orgId) && request.resource.data.userId == request.auth.uid;
-        allow update, delete: if isOrgMember(orgId) && resource.data.userId == request.auth.uid;
+        allow create: if canMutateOrgContent(orgId) && request.resource.data.userId == request.auth.uid;
+        allow update, delete: if canMutateOrgContent(orgId) && resource.data.userId == request.auth.uid;
       }
 
       match /taskComments/{commentId} {
         allow read: if isOrgMember(orgId);
-        allow create: if isOrgMember(orgId) && request.resource.data.userId == request.auth.uid;
-        allow update, delete: if isOrgMember(orgId) && resource.data.userId == request.auth.uid;
+        allow create: if canMutateOrgContent(orgId) && request.resource.data.userId == request.auth.uid;
+        allow update, delete: if canMutateOrgContent(orgId) && resource.data.userId == request.auth.uid;
       }
 
       match /invoices/{invoiceId} {
         allow read: if isOrgMember(orgId);
-        allow create, update: if isOrgMember(orgId);
+        allow create, update: if canMutateOrgContent(orgId);
         allow delete: if isOrgAdmin(orgId);
       }
     }

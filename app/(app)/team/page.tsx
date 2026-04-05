@@ -60,6 +60,7 @@ export default function TeamPage() {
       members={members}
       orgId={orgId}
       organizationName={org.name}
+      orgPlan={org.plan}
       currentUserId={uid}
       canInvite={canInvite}
       reloadKey={reloadKey}

@@ -11,7 +11,7 @@ import { ProjectsListClient, type ProjectListItem } from "./projects-list-client
 type ProjectRow = ProjectListItem & { createdMs: number };
 
 export default function ProjectsPage() {
-  const { orgId } = useFlowAuth();
+  const { orgId, org, memberRole } = useFlowAuth();
   const [projects, setProjects] = useState<ProjectListItem[] | null>(null);
 
   useEffect(() => {
@@ -82,5 +82,11 @@ export default function ProjectsPage() {
     return <p className="text-sm text-flowpm-muted">Loading projects…</p>;
   }
 
-  return <ProjectsListClient projects={projects} />;
+  return (
+    <ProjectsListClient
+      projects={projects}
+      memberRole={memberRole}
+      orgPlan={org?.plan ?? "free"}
+    />
+  );
 }

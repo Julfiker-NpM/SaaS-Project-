@@ -3,6 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { collection, doc, getDocs, serverTimestamp, setDoc } from "firebase/firestore";
 import { getFirebaseAuth, getFirebaseDb } from "@/lib/firebase/client";
+import {
+  FREE_PLAN_MAX_MEMBERS,
+  freePlanMemberLimitMessage,
+  isFreePlan,
+} from "@/lib/flowpm/plan-limits";
 import { PageMotion } from "@/components/flowpm/page-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -42,11 +47,12 @@ export function TeamClient(props: {
   members: TeamMemberRow[];
   orgId: string;
   organizationName: string;
+  orgPlan: string | null | undefined;
   currentUserId: string;
   canInvite: boolean;
   reloadKey: number;
 }) {
-  const { members, orgId, organizationName, currentUserId, canInvite, reloadKey } = props;
+  const { members, orgId, organizationName, orgPlan, currentUserId, canInvite, reloadKey } = props;
   const [modalOpen, setModalOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "member" | "viewer">("member");
@@ -88,8 +94,19 @@ export function TeamClient(props: {
     }
     setPending(true);
     try {
-      const token = randomInviteToken();
       const db = getFirebaseDb();
+      if (isFreePlan(orgPlan)) {
+        const [membersSnap, invitesSnap] = await Promise.all([
+          getDocs(collection(db, "organizations", orgId, "members")),
+          getDocs(collection(db, "organizations", orgId, "invites")),
+        ]);
+        if (membersSnap.size + invitesSnap.size >= FREE_PLAN_MAX_MEMBERS) {
+          setError(freePlanMemberLimitMessage(FREE_PLAN_MAX_MEMBERS));
+          setPending(false);
+          return;
+        }
+      }
+      const token = randomInviteToken();
       await setDoc(doc(db, "organizations", orgId, "invites", token), {
         email: addr,
         role,

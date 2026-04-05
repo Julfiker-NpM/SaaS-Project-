@@ -140,7 +140,6 @@ export function NotificationBell(props: {
   const [orgInvites, setOrgInvites] = useState<InviteNotificationRow[]>([]);
   const [cgInvites, setCgInvites] = useState<InviteNotificationRow[]>([]);
   const [orgInviteErr, setOrgInviteErr] = useState<string | null>(null);
-  const [cgInviteErr, setCgInviteErr] = useState<string | null>(null);
   /** True after org-scoped invite listener has emitted once (success or error), or org query was skipped. */
   const [orgInvitesReady, setOrgInvitesReady] = useState(false);
   const [tasks, setTasks] = useState<TaskAssignRow[]>([]);
@@ -233,7 +232,6 @@ export function NotificationBell(props: {
   useEffect(() => {
     if (!normalizedEmail?.includes("@")) {
       setCgInvites([]);
-      setCgInviteErr(null);
       return;
     }
 
@@ -244,7 +242,6 @@ export function NotificationBell(props: {
     const unsub = onSnapshot(
       q,
       (snapshot) => {
-        setCgInviteErr(null);
         const rows = mapInviteDocs(snapshot);
         if (!first) {
           for (const ch of snapshot.docChanges()) {
@@ -268,7 +265,6 @@ export function NotificationBell(props: {
       },
       (listenerErr) => {
         console.error("[FlowPM] collectionGroup invite notifications query failed", listenerErr);
-        setCgInviteErr(firestoreListenerMessage(listenerErr, "invites"));
         setCgInvites([]);
       },
     );
