@@ -39,7 +39,9 @@ service cloud.firestore {
       allow delete: if false;
 
       match /members/{memberId} {
-        allow read: if isOrgMember(orgId);
+        // Invitee must read their own member doc (even if missing) to complete invite transaction.
+        allow read: if isOrgMember(orgId) ||
+          (signedIn() && request.auth.uid == memberId);
         allow create: if signedIn() && request.auth.uid == memberId && (
           request.resource.data.role in ['admin', 'member', 'viewer'] ||
           (request.resource.data.role == 'owner' && isOrgOwnerUser(orgId))

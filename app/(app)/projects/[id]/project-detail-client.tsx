@@ -1,35 +1,403 @@
 "use client";
 
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  deleteField,
+  doc,
+  getDocs,
+  onSnapshot,
+  serverTimestamp,
+  Timestamp,
+  updateDoc,
+} from "firebase/firestore";
+import { getFirebaseDb } from "@/lib/firebase/client";
+import { firestoreToDate } from "@/lib/firebase/firestore-dates";
 import { PageMotion } from "@/components/flowpm/page-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 
-export type BoardColumn = {
-  id: string;
-  title: string;
-  tasks: { id: string; title: string }[];
+const STATUS_ORDER = ["todo", "in_progress", "review", "done"] as const;
+type TaskStatus = (typeof STATUS_ORDER)[number];
+
+const STATUS_LABELS: Record<TaskStatus, string> = {
+  todo: "Todo",
+  in_progress: "In progress",
+  review: "Review",
+  done: "Done",
 };
 
-export function ProjectDetailClient(props: { projectId: string; name: string; columns: BoardColumn[] }) {
-  const { projectId, name, columns } = props;
+const PRIORITIES = ["low", "medium", "high"] as const;
+
+function normalizeStatus(s: string): TaskStatus {
+  return STATUS_ORDER.includes(s as TaskStatus) ? (s as TaskStatus) : "todo";
+}
+
+function toInputDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export type TaskRow = {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  position: number;
+  dueDate: Date | null;
+  assigneeId: string | null;
+  priority: string;
+  description: string;
+};
+
+type MemberOption = { id: string; name: string; email: string };
+
+type ProjectSnapshot = {
+  name: string;
+  clientName: string;
+  color: string;
+  status: string;
+  dueDate: Date | null;
+};
+
+function mapTaskDoc(id: string, data: Record<string, unknown>): TaskRow {
+  return {
+    id,
+    title: String(data.title ?? "").trim() || "Untitled task",
+    status: normalizeStatus(String(data.status ?? "todo")),
+    position: typeof data.position === "number" ? data.position : 0,
+    dueDate: firestoreToDate(data.dueDate),
+    assigneeId: (data.assigneeId as string | null) ?? null,
+    priority: String(data.priority ?? "medium"),
+    description: String(data.description ?? ""),
+  };
+}
+
+export function ProjectDetailClient(props: { orgId: string; projectId: string }) {
+  const { orgId, projectId } = props;
+  const db = getFirebaseDb();
+
+  const [missing, setMissing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [project, setProject] = useState<ProjectSnapshot | null>(null);
+  const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [members, setMembers] = useState<MemberOption[]>([]);
+
+  const [taskSheetOpen, setTaskSheetOpen] = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const lastOpenedTaskRef = useRef<string | null>(null);
+
+  const [taskDraft, setTaskDraft] = useState({
+    title: "",
+    description: "",
+    status: "todo" as TaskStatus,
+    priority: "medium",
+    assigneeId: "",
+    due: "",
+  });
+  const [taskSaving, setTaskSaving] = useState(false);
+  const [taskError, setTaskError] = useState<string | null>(null);
+
+  const [settingsDraft, setSettingsDraft] = useState({
+    name: "",
+    clientName: "",
+    color: "#534AB7",
+    status: "active",
+    due: "",
+  });
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getDocs(collection(db, "organizations", orgId, "members")).then((snap) => {
+      if (cancelled) return;
+      const rows: MemberOption[] = snap.docs.map((d) => {
+        const x = d.data() as Record<string, unknown>;
+        const email = String(x.email ?? "");
+        const name = String(x.name ?? "").trim() || email.split("@")[0] || "Member";
+        return { id: d.id, name, email };
+      });
+      rows.sort((a, b) => a.name.localeCompare(b.name));
+      setMembers(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [db, orgId]);
+
+  useEffect(() => {
+    setLoading(true);
+    const pref = doc(db, "organizations", orgId, "projects", projectId);
+    const unsubP = onSnapshot(pref, (snap) => {
+      if (!snap.exists()) {
+        setMissing(true);
+        setProject(null);
+        setLoading(false);
+        return;
+      }
+      setMissing(false);
+      const d = snap.data() as Record<string, unknown>;
+      const due = firestoreToDate(d.dueDate);
+      setProject({
+        name: String(d.name ?? "Project"),
+        clientName: (d.clientName as string) ?? "",
+        color: String(d.color ?? "#534AB7"),
+        status: String(d.status ?? "active"),
+        dueDate: due,
+      });
+      setSettingsDraft((prev) => ({
+        ...prev,
+        name: String(d.name ?? "Project"),
+        clientName: String(d.clientName ?? ""),
+        color: String(d.color ?? "#534AB7"),
+        status: String(d.status ?? "active"),
+        due: due ? toInputDate(due) : "",
+      }));
+      setLoading(false);
+    });
+
+    const tref = collection(db, "organizations", orgId, "projects", projectId, "tasks");
+    const unsubT = onSnapshot(
+      tref,
+      (snap) => {
+        const rows = snap.docs.map((x) => mapTaskDoc(x.id, x.data() as Record<string, unknown>));
+        rows.sort((a, b) => a.position - b.position || a.title.localeCompare(b.title));
+        setTasks(rows);
+      },
+      () => setTasks([]),
+    );
+
+    return () => {
+      unsubP();
+      unsubT();
+    };
+  }, [db, orgId, projectId]);
+
+  const columns = useMemo(() => {
+    return STATUS_ORDER.map((status) => ({
+      id: status,
+      title: STATUS_LABELS[status],
+      tasks: tasks.filter((t) => t.status === status),
+    }));
+  }, [tasks]);
+
+  useEffect(() => {
+    if (!selectedTaskId) {
+      lastOpenedTaskRef.current = null;
+      return;
+    }
+    if (tasks.length === 0) return;
+    const t = tasks.find((x) => x.id === selectedTaskId);
+    if (!t) {
+      setSelectedTaskId(null);
+      setTaskSheetOpen(false);
+      return;
+    }
+    if (lastOpenedTaskRef.current !== selectedTaskId) {
+      lastOpenedTaskRef.current = selectedTaskId;
+      setTaskDraft({
+        title: t.title,
+        description: t.description,
+        status: t.status,
+        priority: PRIORITIES.includes(t.priority as (typeof PRIORITIES)[number]) ? t.priority : "medium",
+        assigneeId: t.assigneeId ?? "",
+        due: t.dueDate ? toInputDate(t.dueDate) : "",
+      });
+      setTaskError(null);
+    }
+  }, [selectedTaskId, tasks]);
+
+  const openTask = useCallback((id: string) => {
+    setTaskError(null);
+    setSelectedTaskId(id);
+    setTaskSheetOpen(true);
+  }, []);
+
+  const nextPositionInStatus = useCallback(
+    (status: TaskStatus, excludeTaskId?: string) => {
+      const inCol = tasks.filter((t) => t.status === status && t.id !== excludeTaskId);
+      const max = inCol.reduce((m, t) => Math.max(m, t.position), -1);
+      return max + 1;
+    },
+    [tasks],
+  );
+
+  async function addTask(status: TaskStatus) {
+    setTaskError(null);
+    try {
+      const colRef = collection(db, "organizations", orgId, "projects", projectId, "tasks");
+      const ref = await addDoc(colRef, {
+        title: "New task",
+        status,
+        position: nextPositionInStatus(status),
+        priority: "medium",
+        assigneeId: null,
+        description: "",
+        createdAt: serverTimestamp(),
+      });
+      setSelectedTaskId(ref.id);
+      setTaskSheetOpen(true);
+    } catch {
+      setTaskError("Could not add task.");
+    }
+  }
+
+  async function saveTask() {
+    if (!selectedTaskId) return;
+    const st = tasks.find((t) => t.id === selectedTaskId);
+    if (!st) return;
+    setTaskError(null);
+    setTaskSaving(true);
+    try {
+      const ref = doc(db, "organizations", orgId, "projects", projectId, "tasks", selectedTaskId);
+      const payload: Record<string, unknown> = {
+        title: taskDraft.title.trim() || "Untitled task",
+        description: taskDraft.description.trim(),
+        status: taskDraft.status,
+        priority: taskDraft.priority,
+        assigneeId: taskDraft.assigneeId || null,
+      };
+      if (taskDraft.due) {
+        const d = new Date(taskDraft.due);
+        if (!Number.isNaN(d.getTime())) payload.dueDate = Timestamp.fromDate(d);
+      } else {
+        payload.dueDate = deleteField();
+      }
+      if (st.status !== taskDraft.status) {
+        payload.position = nextPositionInStatus(taskDraft.status, selectedTaskId);
+      }
+      await updateDoc(ref, payload);
+      setTaskSheetOpen(false);
+      setSelectedTaskId(null);
+    } catch {
+      setTaskError("Could not save task.");
+    } finally {
+      setTaskSaving(false);
+    }
+  }
+
+  async function removeTask() {
+    if (!selectedTaskId) return;
+    setTaskError(null);
+    setTaskSaving(true);
+    try {
+      await deleteDoc(doc(db, "organizations", orgId, "projects", projectId, "tasks", selectedTaskId));
+      setTaskSheetOpen(false);
+      setSelectedTaskId(null);
+    } catch {
+      setTaskError("Could not delete task.");
+    } finally {
+      setTaskSaving(false);
+    }
+  }
+
+  async function saveProjectSettings(e: React.FormEvent) {
+    e.preventDefault();
+    setSettingsError(null);
+    setSettingsSaving(true);
+    try {
+      const ref = doc(db, "organizations", orgId, "projects", projectId);
+      const payload: Record<string, unknown> = {
+        name: settingsDraft.name.trim() || "Untitled",
+        clientName: settingsDraft.clientName.trim() || null,
+        color: settingsDraft.color.trim() || "#534AB7",
+        status: settingsDraft.status.trim() || "active",
+      };
+      if (settingsDraft.due) {
+        const d = new Date(settingsDraft.due);
+        if (!Number.isNaN(d.getTime())) payload.dueDate = Timestamp.fromDate(d);
+      } else {
+        payload.dueDate = deleteField();
+      }
+      await updateDoc(ref, payload);
+    } catch {
+      setSettingsError("Could not update project.");
+    } finally {
+      setSettingsSaving(false);
+    }
+  }
+
+  const timelineTasks = useMemo(() => {
+    return [...tasks]
+      .filter((t) => t.dueDate && t.status !== "done")
+      .sort((a, b) => (a.dueDate!.getTime() ?? 0) - (b.dueDate!.getTime() ?? 0));
+  }, [tasks]);
+
+  function memberLabel(id: string | null) {
+    if (!id) return "—";
+    const m = members.find((x) => x.id === id);
+    return m?.name ?? id.slice(0, 6);
+  }
+
+  if (loading && !project && !missing) {
+    return <p className="text-sm text-flowpm-muted">Loading…</p>;
+  }
+  if (missing) {
+    return (
+      <PageMotion>
+        <p className="text-sm text-flowpm-muted">Project not found.</p>
+        <Link href="/projects" className="mt-4 inline-block text-sm text-flowpm-primary hover:underline">
+          ← All projects
+        </Link>
+      </PageMotion>
+    );
+  }
 
   return (
     <PageMotion>
-      <p className="mb-6 text-sm text-flowpm-muted">
-        <span className="font-medium text-flowpm-body">{name}</span>
-        <span className="text-flowpm-muted"> · </span>
-        <span className="font-mono text-xs">#{projectId.slice(0, 8)}</span>
-      </p>
+      {taskError && !taskSheetOpen ? (
+        <p className="mb-3 text-xs text-flowpm-danger">{taskError}</p>
+      ) : null}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <Link href="/projects" className="text-xs font-medium text-flowpm-primary hover:underline">
+            ← All projects
+          </Link>
+          <p className="mt-1 text-sm text-flowpm-muted">
+            <span className="font-medium text-flowpm-body">{project?.name}</span>
+            <span className="text-flowpm-muted"> · </span>
+            <span className="font-mono text-xs">#{projectId.slice(0, 8)}</span>
+          </p>
+        </div>
+      </div>
 
       <Tabs defaultValue="board" className="w-full">
-        <TabsList className="mb-6 grid w-full max-w-lg grid-cols-5 bg-flowpm-surface">
-          <TabsTrigger value="board">Board</TabsTrigger>
-          <TabsTrigger value="list">List</TabsTrigger>
-          <TabsTrigger value="timeline">Timeline</TabsTrigger>
-          <TabsTrigger value="files">Files</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
+        <TabsList className="mb-6 flex h-auto w-full max-w-2xl flex-wrap gap-1 bg-flowpm-surface p-1">
+          <TabsTrigger value="board" className="flex-1 min-w-[4.5rem]">
+            Board
+          </TabsTrigger>
+          <TabsTrigger value="list" className="flex-1 min-w-[4.5rem]">
+            List
+          </TabsTrigger>
+          <TabsTrigger value="timeline" className="flex-1 min-w-[4.5rem]">
+            Timeline
+          </TabsTrigger>
+          <TabsTrigger value="files" className="flex-1 min-w-[4.5rem]">
+            Files
+          </TabsTrigger>
+          <TabsTrigger value="settings" className="flex-1 min-w-[4.5rem]">
+            Settings
+          </TabsTrigger>
         </TabsList>
+
         <TabsContent value="board" className="mt-0">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {columns.map((col) => (
@@ -37,7 +405,7 @@ export function ProjectDetailClient(props: { projectId: string; name: string; co
                 key={col.id}
                 className="rounded-xl border border-flowpm-border bg-flowpm-surface p-3 shadow-card"
               >
-                <div className="mb-3 flex items-center justify-between">
+                <div className="mb-3 flex items-center justify-between gap-2">
                   <h3 className="font-heading text-sm font-semibold text-flowpm-dark">{col.title}</h3>
                   <Badge variant="secondary" className="text-[10px]">
                     {col.tasks.length}
@@ -48,48 +416,340 @@ export function ProjectDetailClient(props: { projectId: string; name: string; co
                     <p className="text-xs text-flowpm-muted">No tasks</p>
                   ) : (
                     col.tasks.map((t) => (
-                      <Card
+                      <button
                         key={t.id}
-                        className="cursor-grab border-flowpm-border shadow-none transition-transform duration-100 active:scale-[0.97]"
+                        type="button"
+                        onClick={() => openTask(t.id)}
+                        className="rounded-lg border border-flowpm-border bg-flowpm-canvas/40 p-3 text-left text-sm text-flowpm-body transition-transform duration-100 hover:border-flowpm-primary/40 hover:bg-flowpm-canvas active:scale-[0.99]"
                       >
-                        <CardContent className="p-3 text-sm text-flowpm-body">{t.title}</CardContent>
-                      </Card>
+                        <span className="font-medium">{t.title}</span>
+                        {t.dueDate ? (
+                          <p className="mt-1 text-[10px] text-flowpm-muted">
+                            Due {t.dueDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                          </p>
+                        ) : null}
+                      </button>
                     ))
                   )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-1 h-8 w-full border-dashed text-xs"
+                    onClick={() => void addTask(col.id)}
+                  >
+                    + Add task
+                  </Button>
                 </div>
               </div>
             ))}
           </div>
         </TabsContent>
-        <TabsContent value="list">
-          <Card className="border-flowpm-border">
-            <CardContent className="p-6 text-sm text-flowpm-muted">
-              Table view uses the same tasks as the board; filters coming next.
+
+        <TabsContent value="list" className="mt-0">
+          <Card className="border-flowpm-border overflow-hidden">
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px] text-sm">
+                  <thead>
+                    <tr className="border-b border-flowpm-border bg-flowpm-canvas/50 text-left text-xs text-flowpm-muted">
+                      <th className="px-4 py-3 font-medium">Task</th>
+                      <th className="px-4 py-3 font-medium">Status</th>
+                      <th className="px-4 py-3 font-medium">Priority</th>
+                      <th className="px-4 py-3 font-medium">Assignee</th>
+                      <th className="px-4 py-3 font-medium">Due</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tasks.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-8 text-center text-flowpm-muted">
+                          No tasks yet. Use the Board tab to add some.
+                        </td>
+                      </tr>
+                    ) : (
+                      tasks.map((t) => (
+                        <tr key={t.id} className="border-b border-flowpm-border last:border-0">
+                          <td className="px-4 py-3">
+                            <button
+                              type="button"
+                              onClick={() => openTask(t.id)}
+                              className="text-left font-medium text-flowpm-body hover:text-flowpm-primary hover:underline"
+                            >
+                              {t.title}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 capitalize text-flowpm-muted">
+                            {STATUS_LABELS[t.status]}
+                          </td>
+                          <td className="px-4 py-3 capitalize text-flowpm-muted">{t.priority}</td>
+                          <td className="px-4 py-3 text-flowpm-muted">{memberLabel(t.assigneeId)}</td>
+                          <td className="px-4 py-3 text-flowpm-muted">
+                            {t.dueDate
+                              ? t.dueDate.toLocaleDateString(undefined, {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                })
+                              : "—"}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
-        <TabsContent value="timeline">
+
+        <TabsContent value="timeline" className="mt-0">
           <Card className="border-flowpm-border">
-            <CardContent className="p-6 text-sm text-flowpm-muted">
-              Timeline from task due dates.
+            <CardContent className="space-y-3 p-6">
+              {timelineTasks.length === 0 ? (
+                <p className="text-sm text-flowpm-muted">
+                  No upcoming due dates. Add due dates to tasks in the task panel.
+                </p>
+              ) : (
+                timelineTasks.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => openTask(t.id)}
+                    className="flex w-full items-center justify-between gap-4 rounded-lg border border-flowpm-border px-4 py-3 text-left transition-colors hover:bg-flowpm-canvas"
+                  >
+                    <span className="font-medium text-flowpm-body">{t.title}</span>
+                    <span className="shrink-0 text-xs text-flowpm-muted">
+                      {t.dueDate?.toLocaleDateString(undefined, {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </span>
+                  </button>
+                ))
+              )}
             </CardContent>
           </Card>
         </TabsContent>
-        <TabsContent value="files">
+
+        <TabsContent value="files" className="mt-0">
           <Card className="border-flowpm-border">
             <CardContent className="p-6 text-sm text-flowpm-muted">
-              Attachments will live here.
+              File uploads are not enabled in this build. Use task descriptions for notes and links.
             </CardContent>
           </Card>
         </TabsContent>
-        <TabsContent value="settings">
+
+        <TabsContent value="settings" className="mt-0">
           <Card className="border-flowpm-border">
-            <CardContent className="p-6 text-sm text-flowpm-muted">
-              Edit name, client, color, and due date from workspace settings flows next.
+            <CardContent className="p-6">
+              <form onSubmit={(e) => void saveProjectSettings(e)} className="mx-auto max-w-md space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="p-name">Project name</Label>
+                  <Input
+                    id="p-name"
+                    value={settingsDraft.name}
+                    onChange={(e) => setSettingsDraft((s) => ({ ...s, name: e.target.value }))}
+                    className="h-10"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="p-client">Client label</Label>
+                  <Input
+                    id="p-client"
+                    value={settingsDraft.clientName}
+                    onChange={(e) => setSettingsDraft((s) => ({ ...s, clientName: e.target.value }))}
+                    className="h-10"
+                    placeholder="Company or client name"
+                  />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="p-color">Color</Label>
+                    <Input
+                      id="p-color"
+                      type="color"
+                      value={settingsDraft.color}
+                      onChange={(e) => setSettingsDraft((s) => ({ ...s, color: e.target.value }))}
+                      className="h-10 w-full cursor-pointer px-1"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="p-status">Project status</Label>
+                    <select
+                      id="p-status"
+                      value={settingsDraft.status}
+                      onChange={(e) => setSettingsDraft((s) => ({ ...s, status: e.target.value }))}
+                      className={cn(
+                        "h-10 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm",
+                        "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                      )}
+                    >
+                      <option value="active">Active</option>
+                      <option value="review">Review</option>
+                      <option value="hold">On hold</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="p-due">Project due date</Label>
+                  <Input
+                    id="p-due"
+                    type="date"
+                    value={settingsDraft.due}
+                    onChange={(e) => setSettingsDraft((s) => ({ ...s, due: e.target.value }))}
+                    className="h-10"
+                  />
+                </div>
+                {settingsError ? <p className="text-xs text-flowpm-danger">{settingsError}</p> : null}
+                <Button
+                  type="submit"
+                  disabled={settingsSaving}
+                  className="bg-flowpm-primary hover:bg-flowpm-primary-hover"
+                >
+                  {settingsSaving ? "Saving…" : "Save project"}
+                </Button>
+              </form>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Sheet
+        open={taskSheetOpen}
+        onOpenChange={(open) => {
+          setTaskSheetOpen(open);
+          if (!open) setSelectedTaskId(null);
+        }}
+      >
+        <SheetContent side="right" className="w-full border-flowpm-border sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Edit task</SheetTitle>
+            <SheetDescription>Changes save to your workspace for everyone.</SheetDescription>
+          </SheetHeader>
+          <div className="flex flex-col gap-4 px-4">
+            <div className="space-y-2">
+              <Label htmlFor="t-title">Title</Label>
+              <Input
+                id="t-title"
+                value={taskDraft.title}
+                onChange={(e) => setTaskDraft((d) => ({ ...d, title: e.target.value }))}
+                className="h-10"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="t-desc">Description</Label>
+              <textarea
+                id="t-desc"
+                value={taskDraft.description}
+                onChange={(e) => setTaskDraft((d) => ({ ...d, description: e.target.value }))}
+                rows={4}
+                className={cn(
+                  "w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm",
+                  "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                  "dark:bg-input/30",
+                )}
+                placeholder="Details, links, acceptance criteria…"
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="t-status">Column</Label>
+                <select
+                  id="t-status"
+                  value={taskDraft.status}
+                  onChange={(e) =>
+                    setTaskDraft((d) => ({ ...d, status: normalizeStatus(e.target.value) }))
+                  }
+                  className={cn(
+                    "h-10 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm",
+                    "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                  )}
+                >
+                  {STATUS_ORDER.map((s) => (
+                    <option key={s} value={s}>
+                      {STATUS_LABELS[s]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="t-priority">Priority</Label>
+                <select
+                  id="t-priority"
+                  value={taskDraft.priority}
+                  onChange={(e) => setTaskDraft((d) => ({ ...d, priority: e.target.value }))}
+                  className={cn(
+                    "h-10 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm",
+                    "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                  )}
+                >
+                  {PRIORITIES.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="t-assign">Assignee</Label>
+              <select
+                id="t-assign"
+                value={taskDraft.assigneeId}
+                onChange={(e) => setTaskDraft((d) => ({ ...d, assigneeId: e.target.value }))}
+                className={cn(
+                  "h-10 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm",
+                  "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                )}
+              >
+                <option value="">Unassigned</option>
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="t-due">Due date</Label>
+              <Input
+                id="t-due"
+                type="date"
+                value={taskDraft.due}
+                onChange={(e) => setTaskDraft((d) => ({ ...d, due: e.target.value }))}
+                className="h-10"
+              />
+            </div>
+            {taskError ? <p className="text-xs text-flowpm-danger">{taskError}</p> : null}
+          </div>
+          <SheetFooter className="flex-col gap-2 sm:flex-col">
+            <div className="flex w-full gap-2">
+              <Button
+                type="button"
+                className="flex-1 bg-flowpm-primary hover:bg-flowpm-primary-hover"
+                disabled={taskSaving}
+                onClick={() => void saveTask()}
+              >
+                {taskSaving ? "Saving…" : "Save task"}
+              </Button>
+              <Button type="button" variant="outline" disabled={taskSaving} onClick={() => setTaskSheetOpen(false)}>
+                Cancel
+              </Button>
+            </div>
+            <Button
+              type="button"
+              variant="destructive"
+              className="w-full"
+              disabled={taskSaving}
+              onClick={() => void removeTask()}
+            >
+              Delete task
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </PageMotion>
   );
 }
