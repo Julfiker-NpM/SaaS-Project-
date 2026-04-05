@@ -215,7 +215,7 @@ export function NotificationBell(props: {
         u();
         taskUnsubs.delete(pid);
       }
-      for (const k of [...rowsByKey.keys()]) {
+      for (const k of Array.from(rowsByKey.keys())) {
         if (k.startsWith(`${pid}:`)) rowsByKey.delete(k);
       }
       seenFirstTaskSnap.delete(pid);
@@ -231,7 +231,7 @@ export function NotificationBell(props: {
         tq,
         (snap) => {
           setTasksError(null);
-          for (const k of [...rowsByKey.keys()]) {
+          for (const k of Array.from(rowsByKey.keys())) {
             if (k.startsWith(`${pid}:`)) rowsByKey.delete(k);
           }
           const firstSnap = !seenFirstTaskSnap.has(pid);
@@ -279,10 +279,10 @@ export function NotificationBell(props: {
       (projSnap) => {
         setTasksError(null);
         const ids = new Set(projSnap.docs.map((d) => d.id));
-        for (const pid of [...taskUnsubs.keys()]) {
+        for (const pid of Array.from(taskUnsubs.keys())) {
           if (!ids.has(pid)) removeProject(pid);
         }
-        for (const pid of ids) attachProject(pid);
+        for (const pid of Array.from(ids)) attachProject(pid);
         mergeAndSet();
       },
       (listenerErr) => {
@@ -294,7 +294,7 @@ export function NotificationBell(props: {
 
     return () => {
       unsubProjects();
-      for (const u of taskUnsubs.values()) u();
+      for (const u of Array.from(taskUnsubs.values())) u();
       taskUnsubs.clear();
       rowsByKey.clear();
     };
