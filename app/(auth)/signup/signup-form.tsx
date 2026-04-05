@@ -11,6 +11,8 @@ import {
 import { getFirebaseAuth } from "@/lib/firebase/client";
 import { signInWithGooglePopupOrRedirect } from "@/lib/firebase/google-sign-in";
 import { createWorkspaceForNewUser } from "@/lib/firebase/create-workspace";
+import { ensureWorkspaceForSignedInUser } from "@/lib/firebase/ensure-workspace-for-user";
+import { useFlowAuth } from "@/context/flowpm-auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,7 +49,7 @@ function firebaseErrorMessage(err: unknown): string {
     return "Enter a valid email address.";
   }
   if (code === "auth/unauthorized-domain") {
-    return "This site's domain is not allowed for sign-in. In Firebase Console → Authentication → Settings, add your Vercel URL under Authorized domains.";
+    return "This domain is not allowed. Firebase Console → Authentication → Settings → Authorized domains: add localhost (dev), your Vercel domain (e.g. app.vercel.app), and any custom domain.";
   }
   if (code === "auth/operation-not-allowed") {
     return "Email/password sign-in is disabled. Enable it in Firebase Console → Authentication → Sign-in method.";
@@ -73,7 +75,7 @@ function googleSignupErrorMessage(err: unknown): string {
     return "This email already uses email/password. Log in with your password instead.";
   }
   if (code === "auth/unauthorized-domain") {
-    return "This domain is not allowed. In Firebase Console → Authentication → Settings, add your site under Authorized domains.";
+    return "This domain is not allowed. Firebase Console → Authentication → Settings → Authorized domains: add localhost, your Vercel URL, and custom domains.";
   }
   if (code === "auth/operation-not-allowed") {
     return "Google sign-in is not enabled in Firebase (Authentication → Sign-in method).";
@@ -83,6 +85,7 @@ function googleSignupErrorMessage(err: unknown): string {
 
 export function SignupForm() {
   const router = useRouter();
+  const { refreshProfile } = useFlowAuth();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [googlePending, setGooglePending] = useState(false);
@@ -91,7 +94,15 @@ export function SignupForm() {
     setError(null);
     setGooglePending(true);
     try {
-      await signInWithGooglePopupOrRedirect(getFirebaseAuth());
+      const auth = getFirebaseAuth();
+      await signInWithGooglePopupOrRedirect(auth);
+      const u = auth.currentUser;
+      if (!u) {
+        setError("Sign-in did not complete. Try again.");
+        return;
+      }
+      await ensureWorkspaceForSignedInUser(u);
+      await refreshProfile();
       router.replace("/dashboard");
       router.refresh();
     } catch (err: unknown) {
@@ -141,6 +152,7 @@ export function SignupForm() {
         }
         throw inner;
       }
+      await refreshProfile();
       router.replace("/dashboard");
       router.refresh();
     } catch (err: unknown) {
