@@ -45,7 +45,9 @@ function InvitePageInner() {
 
   async function accept() {
     const user = getFirebaseAuth().currentUser;
-    if (!user?.email || !orgId || !token) return;
+    if (!user) return;
+    const userEmail = user.email;
+    if (!userEmail || !orgId || !token) return;
     setError(null);
     setBusy(true);
     try {
@@ -59,7 +61,7 @@ function InvitePageInner() {
         if (!invSnap.exists()) throw new Error("INVITE_GONE");
         const data = invSnap.data() as Record<string, unknown>;
         const em = String(data.email ?? "").toLowerCase();
-        if (em !== user.email!.toLowerCase()) throw new Error("EMAIL_MISMATCH");
+        if (em !== userEmail.toLowerCase()) throw new Error("EMAIL_MISMATCH");
         const role = (data.role as string) || "member";
         if (!["admin", "member", "viewer"].includes(role)) throw new Error("BAD_ROLE");
 
@@ -67,8 +69,8 @@ function InvitePageInner() {
         if (!existingMem.exists()) {
           tx.set(memRef, {
             role,
-            email: user.email,
-            name: user.displayName || user.email.split("@")[0] || "Member",
+            email: userEmail,
+            name: user.displayName || userEmail.split("@")[0] || "Member",
             joinedAt: serverTimestamp(),
           });
         }
@@ -76,8 +78,8 @@ function InvitePageInner() {
         tx.set(
           userRef,
           {
-            email: user.email,
-            name: user.displayName || user.email.split("@")[0],
+            email: userEmail,
+            name: user.displayName || userEmail.split("@")[0],
             currentOrgId: orgId,
           },
           { merge: true },
