@@ -15,7 +15,7 @@ import {
   Timestamp,
   updateDoc,
 } from "firebase/firestore";
-import { getFirebaseAuth, getFirebaseDb } from "@/lib/firebase/client";
+import { getFirebaseDb } from "@/lib/firebase/client";
 import { firestoreToDate } from "@/lib/firebase/firestore-dates";
 import { PageMotion } from "@/components/flowpm/page-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
