@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { canMutateWorkspaceContent, isOrgAdminRole } from "@/lib/flowpm/access";
+import { canUseClientPortal } from "@/lib/flowpm/plan-limits";
 
 const STATUS_ORDER = ["todo", "in_progress", "review", "done"] as const;
 type TaskStatus = (typeof STATUS_ORDER)[number];
@@ -103,8 +104,9 @@ export function ProjectDetailClient(props: {
   orgId: string;
   projectId: string;
   memberRole: string | null;
+  orgPlan: string;
 }) {
-  const { orgId, projectId, memberRole } = props;
+  const { orgId, projectId, memberRole, orgPlan } = props;
   const db = getFirebaseDb();
 
   const [missing, setMissing] = useState(false);
@@ -847,53 +849,66 @@ export function ProjectDetailClient(props: {
               {isOrgAdmin ? (
                 <div className="mx-auto mt-10 max-w-md border-t border-flowpm-border pt-8">
                   <h3 className="font-heading text-sm font-semibold text-flowpm-dark">Client portal</h3>
-                  <p className="mt-1 text-xs text-flowpm-muted">
-                    Read-only progress for clients. The link shows column counts and completion (no sign-in).
-                  </p>
-                  {portalMessage ? <p className="mt-2 text-xs text-flowpm-body">{portalMessage}</p> : null}
-                  {project?.clientPortalToken ? (
-                    <div className="mt-3 space-y-2">
-                      <Label className="text-xs">Share link</Label>
-                      <Input
-                        readOnly
-                        className="h-9 font-mono text-[11px]"
-                        value={
-                          portalOrigin
-                            ? `${portalOrigin}/portal/${project.clientPortalToken}`
-                            : `/portal/${project.clientPortalToken}`
-                        }
-                        onFocus={(e) => e.target.select()}
-                      />
-                      <div className="flex flex-wrap gap-2">
+                  {canUseClientPortal(orgPlan) ? (
+                    <>
+                      <p className="mt-1 text-xs text-flowpm-muted">
+                        Read-only progress for clients. The link shows column counts and completion (no sign-in).
+                      </p>
+                      {portalMessage ? <p className="mt-2 text-xs text-flowpm-body">{portalMessage}</p> : null}
+                      {project?.clientPortalToken ? (
+                        <div className="mt-3 space-y-2">
+                          <Label className="text-xs">Share link</Label>
+                          <Input
+                            readOnly
+                            className="h-9 font-mono text-[11px]"
+                            value={
+                              portalOrigin
+                                ? `${portalOrigin}/portal/${project.clientPortalToken}`
+                                : `/portal/${project.clientPortalToken}`
+                            }
+                            onFocus={(e) => e.target.select()}
+                          />
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={portalBusy}
+                              onClick={() => void refreshClientPortalSnapshot()}
+                            >
+                              Refresh snapshot
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="destructive"
+                              disabled={portalBusy}
+                              onClick={() => void revokeClientPortalLink()}
+                            >
+                              Revoke link
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
                         <Button
                           type="button"
-                          size="sm"
-                          variant="outline"
+                          className="mt-3 bg-flowpm-primary hover:bg-flowpm-primary-hover"
                           disabled={portalBusy}
-                          onClick={() => void refreshClientPortalSnapshot()}
+                          onClick={() => void createClientPortalLink()}
                         >
-                          Refresh snapshot
+                          Create share link
                         </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="destructive"
-                          disabled={portalBusy}
-                          onClick={() => void revokeClientPortalLink()}
-                        >
-                          Revoke link
-                        </Button>
-                      </div>
-                    </div>
+                      )}
+                    </>
                   ) : (
-                    <Button
-                      type="button"
-                      className="mt-3 bg-flowpm-primary hover:bg-flowpm-primary-hover"
-                      disabled={portalBusy}
-                      onClick={() => void createClientPortalLink()}
-                    >
-                      Create share link
-                    </Button>
+                    <p className="mt-2 text-xs text-flowpm-muted">
+                      Client portal links are on <strong className="text-flowpm-body">Pro</strong> and{" "}
+                      <strong className="text-flowpm-body">Agency</strong>.{" "}
+                      <Link href="/settings" className="font-medium text-flowpm-primary hover:underline">
+                        Upgrade in Settings
+                      </Link>
+                      .
+                    </p>
                   )}
                 </div>
               ) : null}

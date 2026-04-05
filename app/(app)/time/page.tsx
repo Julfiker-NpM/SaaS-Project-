@@ -4,12 +4,18 @@ import { useCallback, useEffect, useState } from "react";
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase/client";
 import { useFlowAuth } from "@/context/flowpm-auth-context";
+import { PageMotion } from "@/components/flowpm/page-motion";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonVariants } from "@/lib/button-variants";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
+import { canUseTimeTracking } from "@/lib/flowpm/plan-limits";
 import { firestoreToDate } from "@/lib/firebase/firestore-dates";
 import { endOfUtcDay, startOfUtcDay } from "@/lib/dates";
 import { TimeClient, type TimeEntryRow, type ProjectOption } from "./time-client";
 
 export default function TimePage() {
-  const { orgId, firebaseUser } = useFlowAuth();
+  const { orgId, org, firebaseUser } = useFlowAuth();
   const uid = firebaseUser?.uid ?? "";
   const [payload, setPayload] = useState<{
     todayEntries: TimeEntryRow[];
@@ -97,6 +103,36 @@ export default function TimePage() {
   }
   if (!payload) {
     return <p className="text-sm text-flowpm-muted">Loading…</p>;
+  }
+
+  if (!canUseTimeTracking(org?.plan)) {
+    return (
+      <PageMotion>
+        <Card className="mx-auto max-w-lg border-flowpm-border shadow-card">
+          <CardHeader>
+            <CardTitle className="font-heading text-lg">Time tracking</CardTitle>
+            <p className="text-sm text-flowpm-muted">
+              Time tracking is included on <strong className="text-flowpm-body">Pro</strong> and{" "}
+              <strong className="text-flowpm-body">Agency</strong>. Starter includes tasks only.
+            </p>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Link
+              href="/settings"
+              className={cn(
+                buttonVariants({ variant: "default" }),
+                "inline-flex h-10 items-center justify-center px-4 bg-flowpm-primary hover:bg-flowpm-primary-hover",
+              )}
+            >
+              View plans &amp; upgrade
+            </Link>
+            <Link href="/projects" className={cn(buttonVariants({ variant: "outline" }), "inline-flex h-10 items-center px-4")}>
+              Back to projects
+            </Link>
+          </CardContent>
+        </Card>
+      </PageMotion>
+    );
   }
 
   return (

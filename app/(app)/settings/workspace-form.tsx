@@ -48,8 +48,8 @@ export function WorkspaceForm(props: {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <Card className="border-flowpm-border shadow-card">
+    <div className="flex flex-col gap-6">
+      <Card className="border-flowpm-border shadow-card lg:max-w-xl">
         <CardHeader>
           <CardTitle className="font-heading text-lg">Organization</CardTitle>
         </CardHeader>
