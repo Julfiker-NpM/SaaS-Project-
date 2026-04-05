@@ -1,0 +1,15 @@
+import { FlowAuthProvider } from "@/context/flowpm-auth-context";
+
+export default function AuthLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <FlowAuthProvider>
+      <div className="flex min-h-screen items-center justify-center bg-flowpm-canvas px-4 py-12">
+        <div className="w-full max-w-md">{children}</div>
+      </div>
+    </FlowAuthProvider>
+  );
+}
