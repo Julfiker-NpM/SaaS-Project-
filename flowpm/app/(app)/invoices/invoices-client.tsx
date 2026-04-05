@@ -289,7 +289,12 @@ export function InvoicesClient({ orgId }: { orgId: string }) {
       )}
 
       {printInvoice ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 print:static print:bg-transparent print:p-0">
+        <div
+          className={cn(
+            "invoice-print-root fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4",
+            "print:static print:flex print:items-start print:justify-stretch print:bg-white print:p-0",
+          )}
+        >
           <div
             className={cn(
               "max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-flowpm-border bg-flowpm-surface p-6 shadow-xl",

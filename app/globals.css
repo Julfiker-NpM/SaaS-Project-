@@ -126,3 +126,62 @@
     @apply font-heading text-flowpm-dark;
   }
 }
+
+/* Print / Save as PDF: show only invoice modal content, not app shell or page chrome */
+@media print {
+  @page {
+    margin: 12mm;
+  }
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  .invoice-print-root,
+  .invoice-print-root * {
+    visibility: visible;
+  }
+  .invoice-print-root {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    display: block !important;
+    z-index: 2147483647 !important;
+  }
+  #invoice-print-area {
+    position: static !important;
+    max-height: none !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 1.25rem !important;
+    color: #111 !important;
+    background: #fff !important;
+    border: 1px solid #ccc !important;
+    border-radius: 0 !important;
+  }
+  #invoice-print-area h1 {
+    color: #111 !important;
+  }
+  #invoice-print-area p,
+  #invoice-print-area th,
+  #invoice-print-area td {
+    color: #333 !important;
+  }
+  #invoice-print-area table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  #invoice-print-area tr {
+    border-color: #ddd !important;
+  }
+}
