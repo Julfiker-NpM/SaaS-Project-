@@ -25,9 +25,9 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FlowPM — Agency project management",
+  title: "FlowPM — Project Management for Bangladeshi Agencies",
   description:
-    "Team-focused project management for agencies — clients, projects, tasks, time, and billing.",
+    "FlowPM is built for 5–50 person agencies in Bangladesh. Track projects, manage clients, and ship on time — in one place, in your currency.",
 };
 
 export default function RootLayout({
@@ -39,7 +39,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={cn("theme", inter.variable, plusJakarta.variable, jetbrains.variable)}
+      className={cn("theme scroll-smooth", inter.variable, plusJakarta.variable, jetbrains.variable)}
     >
       <body className="min-h-screen antialiased">
         <AppProviders>{children}</AppProviders>
