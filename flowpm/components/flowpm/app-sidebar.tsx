@@ -49,7 +49,7 @@ export function AppSidebar({ userDisplayName, userEmail, organizationName, onSig
   return (
     <>
       {/* Desktop */}
-      <aside className="hidden h-screen w-[220px] shrink-0 flex-col border-r border-flowpm-border bg-flowpm-surface md:flex">
+      <aside className="hidden h-full min-h-0 w-[220px] shrink-0 flex-col border-r border-flowpm-border bg-flowpm-surface md:flex">
         <div className="border-b border-flowpm-border px-4 py-5">
           <Link href="/dashboard" className="font-heading text-lg font-bold text-flowpm-dark">
             FlowPM

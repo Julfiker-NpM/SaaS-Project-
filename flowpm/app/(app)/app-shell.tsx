@@ -67,14 +67,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const handleSignOut = () => signOut(getFirebaseAuth());
 
   return (
-    <div className="flex min-h-screen bg-flowpm-canvas">
+    <div className="flex h-dvh max-h-dvh min-h-0 w-full overflow-hidden bg-flowpm-canvas">
       <AppSidebar
         userDisplayName={displayName}
         userEmail={email}
         organizationName={org.name}
         onSignOut={handleSignOut}
       />
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <TopBar
           user={{ name: profile.name, email }}
           organizationName={org.name}
@@ -82,7 +82,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           userId={firebaseUser.uid}
           orgId={orgId}
         />
-        <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain">
           <div className="mx-auto w-full min-w-0 max-w-[1200px] px-4 py-6 md:px-8 md:py-8">{children}</div>
         </div>
       </div>

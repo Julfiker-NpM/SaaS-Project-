@@ -40,7 +40,7 @@ export function TopBar(props: {
   const displayName = user.name?.trim() || user.email.split("@")[0] || "Account";
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-4 border-b border-flowpm-border bg-flowpm-surface/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-flowpm-surface/80 md:px-8">
+    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between gap-4 border-b border-flowpm-border bg-flowpm-surface/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-flowpm-surface/80 md:px-8">
       <h1 className="font-heading text-xl font-semibold text-flowpm-dark md:pl-0 pl-12">
         {title}
       </h1>
