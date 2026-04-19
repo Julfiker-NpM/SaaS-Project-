@@ -86,9 +86,9 @@ export const PRICING_TIERS = [
     id: "starter" as const,
     name: "Starter",
     priceLine: "৳0",
-    priceSub: "/ month",
-    headerClass:
-      "bg-[#f5f0e8] text-[#1a1a2e] border-[#e8e4dc] dark:bg-[#f5f0e8] dark:text-[#1a1a2e] dark:border-[#e8e4dc]",
+    priceSub: "BDT / month",
+    /** Dark header so Settings “Plans” block (always dark) matches Pro / Ultra */
+    headerClass: "bg-[#16161c] text-[#e8e4dc] border-white/10",
     features: [
       `Up to ${STARTER_MAX_PROJECTS} projects`,
       `${STARTER_MAX_MEMBERS} team members`,
