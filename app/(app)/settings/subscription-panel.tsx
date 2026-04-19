@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, doc, getDocs, updateDoc } from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase/client";
 import {
   getPlanLimits,
@@ -19,6 +19,8 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { Lightbulb } from "lucide-react";
+import { bdBkashCheckoutUrl, bdNagadCheckoutUrl } from "@/lib/flowpm/bd-payments";
+import { Label } from "@/components/ui/label";
 
 function usageBar(current: number, max: number | null) {
   if (max == null) return null;
@@ -34,15 +36,35 @@ function usageBar(current: number, max: number | null) {
   );
 }
 
+const STORED_PLAN_OPTIONS = [
+  { value: "free", label: "Starter (free)" },
+  { value: "pro", label: "Pro" },
+  { value: "agency", label: "Ultra (agency)" },
+] as const;
+
+function planSelectOptions(current: string): { value: string; label: string }[] {
+  const base: { value: string; label: string }[] = STORED_PLAN_OPTIONS.map((o) => ({ ...o }));
+  if (!base.some((o) => o.value === current)) base.unshift({ value: current, label: `${current} (current)` });
+  return base;
+}
+
 export function SubscriptionPanel(props: {
   orgId: string;
   plan: string;
   canManageBilling: boolean;
+  onPlanChanged?: () => void | Promise<void>;
 }) {
-  const { orgId, plan, canManageBilling } = props;
+  const { orgId, plan, canManageBilling, onPlanChanged } = props;
   const [loading, setLoading] = useState(true);
   const [projectCount, setProjectCount] = useState(0);
   const [seatCount, setSeatCount] = useState(0);
+  const [adminPlan, setAdminPlan] = useState(plan);
+  const [adminSaving, setAdminSaving] = useState(false);
+  const [adminMessage, setAdminMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAdminPlan(plan);
+  }, [plan]);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,6 +101,25 @@ export function SubscriptionPanel(props: {
     typeof process !== "undefined" ? process.env.NEXT_PUBLIC_STRIPE_CUSTOMER_PORTAL_URL?.trim() : "";
   const proCheckout = stripeCheckoutUrl("pro");
   const agencyCheckout = stripeCheckoutUrl("agency");
+  const bkashUrl = bdBkashCheckoutUrl();
+  const nagadUrl = bdNagadCheckoutUrl();
+  const adminPlanOptions = useMemo(() => planSelectOptions(plan), [plan]);
+
+  async function saveAdminPlan() {
+    if (!canManageBilling) return;
+    setAdminSaving(true);
+    setAdminMessage(null);
+    try {
+      const db = getFirebaseDb();
+      await updateDoc(doc(db, "organizations", orgId), { plan: adminPlan });
+      setAdminMessage("Plan updated for this workspace.");
+      await onPlanChanged?.();
+    } catch {
+      setAdminMessage("Could not update plan. You need owner or admin access.");
+    } finally {
+      setAdminSaving(false);
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -144,7 +185,7 @@ export function SubscriptionPanel(props: {
           <Separator />
 
           <div className="space-y-3">
-            <p className="font-medium text-flowpm-body">Billing portal</p>
+            <p className="font-medium text-flowpm-body">Stripe billing portal</p>
             <p className="text-xs text-flowpm-muted">{subscriptionUpgradeHint()}</p>
             <div className="flex flex-wrap gap-2">
               {portalUrl && canManageBilling ? (
@@ -172,6 +213,96 @@ export function SubscriptionPanel(props: {
               <p className="text-xs text-flowpm-muted">Only owners and admins can open billing.</p>
             ) : null}
           </div>
+
+          {canManageBilling ? (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <p className="font-medium text-flowpm-body">Bangladesh mobile banking (bKash / Nagad)</p>
+                <p className="text-xs text-flowpm-muted">
+                  After a customer pays through your merchant checkout, set the workspace plan below (or automate with
+                  a secure server webhook from the gateway). Add public checkout URLs in environment variables so these
+                  buttons go live.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {bkashUrl ? (
+                    <a
+                      href={bkashUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={cn(
+                        buttonVariants({ variant: "default" }),
+                        "inline-flex h-10 items-center justify-center px-4 bg-[#E2136E] text-white hover:opacity-90",
+                      )}
+                    >
+                      Pay with bKash
+                    </a>
+                  ) : (
+                    <Button type="button" variant="outline" className="h-10" disabled title="Set NEXT_PUBLIC_BKASH_CHECKOUT_URL">
+                      Pay with bKash
+                    </Button>
+                  )}
+                  {nagadUrl ? (
+                    <a
+                      href={nagadUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={cn(
+                        buttonVariants({ variant: "default" }),
+                        "inline-flex h-10 items-center justify-center px-4 bg-[#f7941d] text-[#1a1a1a] hover:opacity-90",
+                      )}
+                    >
+                      Pay with Nagad
+                    </a>
+                  ) : (
+                    <Button type="button" variant="outline" className="h-10" disabled title="Set NEXT_PUBLIC_NAGAD_CHECKOUT_URL">
+                      Pay with Nagad
+                    </Button>
+                  )}
+                </div>
+                <p className="text-[11px] text-flowpm-muted">
+                  Env: <code className="rounded bg-flowpm-canvas px-1 font-mono">NEXT_PUBLIC_BKASH_CHECKOUT_URL</code>,{" "}
+                  <code className="rounded bg-flowpm-canvas px-1 font-mono">NEXT_PUBLIC_NAGAD_CHECKOUT_URL</code>
+                </p>
+              </div>
+
+              <Separator />
+              <div className="space-y-3">
+                <p className="font-medium text-flowpm-body">Admin: workspace plan (Firestore)</p>
+                <p className="text-xs text-flowpm-muted">
+                  Owners and admins can set <code className="rounded bg-flowpm-canvas px-1 font-mono">plan</code> on the
+                  organization after manual or gateway-confirmed payment. This updates limits immediately for everyone
+                  in the workspace.
+                </p>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="flex-1 space-y-2">
+                    <Label htmlFor="admin-plan">Stored plan value</Label>
+                    <select
+                      id="admin-plan"
+                      className="flex h-10 w-full rounded-md border border-flowpm-border bg-flowpm-surface px-3 text-sm text-flowpm-body shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flowpm-primary"
+                      value={adminPlan}
+                      onChange={(e) => setAdminPlan(e.target.value)}
+                    >
+                      {adminPlanOptions.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <Button
+                    type="button"
+                    className="h-10 bg-flowpm-primary hover:bg-flowpm-primary-hover"
+                    disabled={adminSaving || adminPlan === plan}
+                    onClick={() => void saveAdminPlan()}
+                  >
+                    {adminSaving ? "Saving…" : "Apply plan"}
+                  </Button>
+                </div>
+                {adminMessage ? <p className="text-xs text-flowpm-muted">{adminMessage}</p> : null}
+              </div>
+            </>
+          ) : null}
         </CardContent>
       </Card>
 

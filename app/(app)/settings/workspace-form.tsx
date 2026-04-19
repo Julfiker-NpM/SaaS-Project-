@@ -88,7 +88,12 @@ export function WorkspaceForm(props: {
           </form>
         </CardContent>
       </Card>
-      <SubscriptionPanel orgId={orgId} plan={plan} canManageBilling={canManageBilling} />
+      <SubscriptionPanel
+        orgId={orgId}
+        plan={plan}
+        canManageBilling={canManageBilling}
+        onPlanChanged={() => void refreshProfile()}
+      />
     </div>
   );
 }
