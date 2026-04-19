@@ -66,8 +66,8 @@ function SubscriptionManageModal(props: ManageModalProps) {
   const agencyCheckout = stripeCheckoutUrl("agency");
 
   const tierLabel = selectedTier === "pro" ? "Pro" : selectedTier === "agency" ? "Ultra" : null;
-  const bkashHref = selectedTier ? `/api/checkout/bkash?plan=${selectedTier}` : "";
-  const nagadHref = selectedTier ? `/api/checkout/nagad?plan=${selectedTier}` : "";
+  const bkashHref = selectedTier ? `/billing/payment-submit?gateway=bkash&plan=${selectedTier}` : "";
+  const nagadHref = selectedTier ? `/billing/payment-submit?gateway=nagad&plan=${selectedTier}` : "";
 
   if (!open) return null;
 
@@ -293,8 +293,6 @@ function SubscriptionManageModal(props: ManageModalProps) {
               <div className="flex flex-wrap gap-2">
                 <a
                   href={bkashHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
                   className={cn(
                     buttonVariants({ variant: "default" }),
                     "inline-flex h-10 flex-1 min-w-[140px] items-center justify-center bg-[#E2136E] text-white hover:opacity-90 sm:flex-none sm:px-6",
@@ -304,8 +302,6 @@ function SubscriptionManageModal(props: ManageModalProps) {
                 </a>
                 <a
                   href={nagadHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
                   className={cn(
                     buttonVariants({ variant: "default" }),
                     "inline-flex h-10 flex-1 min-w-[140px] items-center justify-center bg-[#f7941d] text-[#1a1a1a] hover:opacity-90 sm:flex-none sm:px-6",

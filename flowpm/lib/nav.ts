@@ -35,6 +35,7 @@ export function titleForPath(pathname: string): string {
     "/reports": "Reports",
     "/invoices": "Invoices",
     "/settings": "Settings",
+    "/billing/payment-submit": "Confirm payment",
   };
   return map[pathname] ?? "FlowPM";
 }

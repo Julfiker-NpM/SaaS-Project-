@@ -145,6 +145,43 @@ service cloud.firestore {
         allow create, update: if canMutateOrgContent(orgId);
         allow delete: if isOrgAdmin(orgId);
       }
+
+      // bKash / Nagad payment proof — members submit; owners/admins review and approve (updates plan in app).
+      match /paymentSubmissions/{submissionId} {
+        allow create: if isOrgMember(orgId)
+          && request.resource.data.gateway in ['bkash', 'nagad']
+          && request.resource.data.plan in ['pro', 'agency']
+          && request.resource.data.payerPhone is string
+          && request.resource.data.payerPhone.size() >= 10
+          && request.resource.data.payerPhone.size() <= 22
+          && request.resource.data.transactionId is string
+          && request.resource.data.transactionId.size() >= 6
+          && request.resource.data.transactionId.size() <= 80
+          && request.resource.data.submittedByUid == request.auth.uid
+          && request.resource.data.status == 'pending'
+          && (!('note' in request.resource.data) ||
+            (request.resource.data.note is string && request.resource.data.note.size() <= 500));
+
+        allow get: if isOrgAdmin(orgId) ||
+          (isOrgMember(orgId) && resource.data.submittedByUid == request.auth.uid);
+
+        allow list: if isOrgAdmin(orgId);
+
+        allow update: if isOrgAdmin(orgId)
+          && resource.data.status == 'pending'
+          && request.resource.data.status in ['approved', 'rejected']
+          && request.resource.data.gateway == resource.data.gateway
+          && request.resource.data.plan == resource.data.plan
+          && request.resource.data.payerPhone == resource.data.payerPhone
+          && request.resource.data.transactionId == resource.data.transactionId
+          && request.resource.data.submittedByUid == resource.data.submittedByUid
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.reviewedByUid == request.auth.uid
+          && ((!('note' in resource.data) && !('note' in request.resource.data)) ||
+            (request.resource.data.note == resource.data.note));
+
+        allow delete: if false;
+      }
     }
   }
 }
